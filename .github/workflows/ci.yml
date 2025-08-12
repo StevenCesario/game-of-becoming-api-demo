@@ -1,0 +1,42 @@
+# A human-readable name for our workflow
+name: Run Tests
+
+# --- Trigger Conditions ---
+# This workflow will run automatically on:
+# 1. Pushes to the 'main' branch
+# 2. Pull Requests that target the 'main' branch
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+# --- Jobs ---
+jobs:
+  # We have a single job named 'build-and-test'
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Get a copy of our repository's code
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Step 2: Set up a specific version of Python
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    # Step 3: Install our project's dependencies from requirements.txt
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Step 4: Run our tests using pytest!
+    # If any test fails, pytest will exit with a non-zero status code,
+    # which will cause this step (and the entire job) to fail.
+    - name: Run tests with pytest
+      run: |
+        pytest
