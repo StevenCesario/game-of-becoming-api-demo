@@ -67,7 +67,7 @@ def user_token(client):
     assert r.status_code == 201, f"registration failed: {r.json()}"
 
     login = client.post("/login", data={
-        "username": "demo@example.com", "password": "pass123"
+        "username": "demo@example.com", "password": "pass123123123"
     })
     assert login.status_code == 200, f"login failed: {login.json()}"
 
