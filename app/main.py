@@ -1,3 +1,5 @@
+from __future__ import annotations  # keep ForwardRef happy with annotation-handling
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -7,22 +9,14 @@ from typing import Annotated
 from dotenv import load_dotenv
 import math
 
-from .database import get_db
-from .security import create_access_token, get_current_user
-from .utils import verify_password
-from .crud import create_user, get_user_by_email, get_or_create_user_stats, get_today_intention
-
-from . import services
-
-# Import models and schemas
-from .models import User, CharacterStats, DailyIntention, FocusBlock, DailyResult
-from .schemas import (
-    TokenResponse, UserCreate, UserResponse, CharacterStatsResponse,
-    DailyIntentionCreate, DailyIntentionUpdate, DailyIntentionResponse,
-    DailyIntentionCreateResponse, DailyIntentionRefinementResponse,
-    FocusBlockCreate, FocusBlockResponse, FocusBlockUpdate,
-    DailyResultResponse, RecoveryQuestResponse, RecoveryQuestInput
-)
+# ---- Internal package imports (namespaced) ----
+import app.crud as crud
+import app.database as database
+import app.security as security
+import app.services as services
+import app.utils as utils
+import app.models as models
+import app.schemas as schemas
 
 # Load environment variables
 load_dotenv()
@@ -45,13 +39,13 @@ def calculate_level(xp: int) -> int:
         return 1
     return math.floor((xp / 100) ** 0.5) + 1
 
-# ENDPOINT DEPENDENCIES
+# ---------- ENDPOINT DEPENDENCIES ----------
 
 def get_current_user_daily_intention(
     # This dependency itself depends on our other dependencies
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db)
-) -> DailyIntention:
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+) -> models.DailyIntention:
     """
     A dependency that gets the current user's intention for today.
 
@@ -60,7 +54,7 @@ def get_current_user_daily_intention(
     If no intention is found, it raises a 404 error, stopping the request.
     """
     # Get today's Daily Intention for the currently logged in user
-    intention = get_today_intention(db, current_user.id)
+    intention = crud.get_today_intention(db, current_user.id)
     if not intention:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -69,9 +63,9 @@ def get_current_user_daily_intention(
     return intention
 
 def get_current_user_stats(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db)
-) -> CharacterStats:
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+) -> models.CharacterStats:
     """
     A dependency that gets the current user's character stats.
     
@@ -81,13 +75,13 @@ def get_current_user_stats(
     """
     # The crud function guarantees a stats object will be returned,
     # so we can just return its result directly. No check needed.
-    return get_or_create_user_stats(db, user_id=current_user.id)
+    return crud.get_or_create_user_stats(db, user_id=current_user.id)
 
 def get_owned_focus_block(
         block_id: int, # We get this from the endpoint path parameter
-        current_user: Annotated[User, Depends(get_current_user)], 
-        db: Session = Depends(get_db)
-) -> FocusBlock:
+        current_user: Annotated[models.User, Depends(security.get_current_user)], 
+        db: Session = Depends(database.get_db)
+) -> models.FocusBlock:
     """
     A dependency that gets a specific Focus Block by its ID, but only if
     it belongs to the currently authenticated user.
@@ -95,9 +89,9 @@ def get_owned_focus_block(
     Raises a 404 if the block is not found or not owned by the user.
     """
     # Join FocusBlock and DailyIntention and filter by BOTH block_id and user_id
-    block = db.query(FocusBlock).join(DailyIntention).filter(
-        FocusBlock.id == block_id,
-        DailyIntention.user_id == current_user.id
+    block = db.query(models.FocusBlock).join(models.DailyIntention).filter(
+        models.FocusBlock.id == block_id,
+        models.DailyIntention.user_id == current_user.id
     ).first()
 
     if not block:
@@ -108,9 +102,9 @@ def get_owned_focus_block(
 
 def get_owned_daily_result_by_intention_id(
         intention_id: int, # Gets this from the endpoint path parameter
-        current_user: Annotated[User, Depends(get_current_user)],
-        db: Session = Depends(get_db)
-) -> DailyResult:
+        current_user: Annotated[models.User, Depends(security.get_current_user)],
+        db: Session = Depends(database.get_db)
+) -> models.DailyResult:
     """
     A dependency that gets a specific Daily Result by its parent intention's ID,
     but only if it belongs to the currently authenticated user.
@@ -118,9 +112,9 @@ def get_owned_daily_result_by_intention_id(
     Raises a 404 if the result is not found or not owned by the user.
     """
     # This query links the DailyResult to the DailyIntention to check the user_id.
-    result = db.query(DailyResult).join(DailyIntention).filter(
-        DailyResult.daily_intention_id == intention_id,
-        DailyIntention.user_id == current_user.id
+    result = db.query(models.DailyResult).join(models.DailyIntention).filter(
+        models.DailyResult.daily_intention_id == intention_id,
+        models.DailyIntention.user_id == current_user.id
     ).first()
 
     if not result:
@@ -131,17 +125,17 @@ def get_owned_daily_result_by_intention_id(
 
 def get_owned_daily_result_by_result_id(
     result_id: int, # Gets this from the path
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db)
-) -> DailyResult:
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+) -> models.DailyResult:
     """
     Dependency to get a DailyResult by its own ID, ensuring it belongs
     to the current user. This is the final ownership check.
     """
     # We query DailyResult, join its parent DailyIntention, and check the user_id.
-    result = db.query(DailyResult).join(DailyIntention).filter(
-        DailyResult.id == result_id,
-        DailyIntention.user_id == current_user.id
+    result = db.query(models.DailyResult).join(models.DailyIntention).filter(
+        models.DailyResult.id == result_id,
+        models.DailyIntention.user_id == current_user.id
     ).first()
 
     if not result:
@@ -149,7 +143,7 @@ def get_owned_daily_result_by_result_id(
     
     return result
 
-# GENERAL ENDPOINTS
+# ---------- GENERAL ENDPOINTS ----------
 
 @app.get("/")
 def read_root():
@@ -170,12 +164,12 @@ def health_check():
         "version": "1.0.0"
     }
 
-@app.post("/login", response_model=TokenResponse)
+@app.post("/login", response_model=schemas.TokenResponse)
 def login_for_access_token(
     # This is the "magic" part. FastAPI will automatically handle getting the 
     # 'username' and 'password' from the form body and put them into this 'form_data' object.
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()], # Annotated can be seen as a sticky note
-    db: Session = Depends(get_db)
+    db: Session = Depends(database.get_db)
 ):
     """
     The Bouncer. Now using OAuth2PasswordRequestForm to handle form data. 
@@ -185,10 +179,10 @@ def login_for_access_token(
     4. If valid, creates and returns a JWT (the wristband).
     """
     # 1. Find the user by their email (which OAuth2 calls 'username')
-    user = get_user_by_email(db, email=form_data.username)
+    user = crud.get_user_by_email(db, email=form_data.username)
 
     # 2. Verify that the user exists and that the password is correct
-    if not user or not verify_password(form_data.password, user.auth.password_hash):
+    if not user or not utils.verify_password(form_data.password, user.auth.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, # We use a generic error to prevent attackers from guessing valid emails.
             detail="Incorrect username or password",
@@ -197,7 +191,7 @@ def login_for_access_token(
     
     # 3. If credentials are valid, create the access token
     # The 'sub' (subject) claim in the token is the user's ID
-    access_token = create_access_token(data={"sub": str(user.id)})
+    access_token = security.create_access_token(data={"sub": str(user.id)})
 
     # 4. Return the token in the standard Bearer format
     return {"access_token": access_token, "token_type": "bearer"}
@@ -206,8 +200,8 @@ def login_for_access_token(
 # USER ENDPOINTS
 
 # Simplified using create_user in crud.py
-@app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
+@app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
+def register_user(user_data: schemas.UserCreate, db: Session = Depends(database.get_db)):
     """
     Register a new user and their associated records. 
     Also now creates their initial character stats
@@ -216,7 +210,7 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     """
 
     # Check if user already exists
-    existing_user = get_user_by_email(db, user_data.email)
+    existing_user = crud.get_user_by_email(db, user_data.email)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -225,12 +219,12 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     
     try:
         # Create the User record
-        new_user = create_user(db=db, user_data=user_data)
+        new_user = crud.create_user(db=db, user_data=user_data)
         db.commit()
         db.refresh(new_user)
 
         # Return the user 
-        return UserResponse.model_validate(new_user)
+        return schemas.UserResponse.model_validate(new_user)
     
     except Exception as e:
         db.rollback()  # Roll back on any error
@@ -239,8 +233,8 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
             detail=f"Failed to create user account: {str(e)}"
         )
 
-@app.get("/users/me", response_model=UserResponse)
-def get_user(current_user: Annotated[User, Depends(get_current_user)]):
+@app.get("/users/me", response_model=schemas.UserResponse)
+def get_user(current_user: Annotated[models.User, Depends(security.get_current_user)]):
     """Get the profile for the currently logged-in user for the frontend to display user informaiton."""
     # The 'get_current_user' dependency has already done all the work:
     # 1. It got the token.
@@ -249,16 +243,16 @@ def get_user(current_user: Annotated[User, Depends(get_current_user)]):
     # 4. It handled the "user not found" case.
     
     # Explicitly convert the SQLAlchemy User model to the Pydantic UserResponse model.
-    return UserResponse.model_validate(current_user)
+    return schemas.UserResponse.model_validate(current_user)
 
-@app.get("/users/me/stats", response_model=CharacterStatsResponse)
+@app.get("/users/me/stats", response_model=schemas.CharacterStatsResponse)
 def get_my_character_stats(
-    current_user: Annotated[User, Depends(get_current_user)],
-    db: Session = Depends(get_db)
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
     ):
     """Get the character stats for the currently authenticated user."""
     # Use the fresh 'db' session to query for the stats, we can't rely on current_user
-    stats = db.query(CharacterStats).filter(CharacterStats.user_id==current_user.id).first()
+    stats = db.query(models.CharacterStats).filter(models.CharacterStats.user_id==current_user.id).first()
 
     # The user should always have stats, but it's good practice to check
     if not stats:
@@ -268,7 +262,7 @@ def get_my_character_stats(
     current_level = calculate_level(stats.xp)
 
     # Return a response that includes the calculated level
-    return CharacterStatsResponse(
+    return schemas.CharacterStatsResponse(
         user_id=stats.user_id,
         level=current_level, # Use the calculated value here
         xp=stats.xp,
@@ -282,16 +276,16 @@ def get_my_character_stats(
 # DAILY INTENTIONS ENDPOINTS
 
 # Updated for Smart Detection!
-@app.post("/intentions", response_model=DailyIntentionCreateResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/intentions", response_model=schemas.DailyIntentionCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_daily_intention(
-    intention_data: DailyIntentionCreate,
-    current_user: Annotated[User, Depends(get_current_user)],
-    stats: Annotated[CharacterStats, Depends(get_current_user_stats)],
-    db: Session = Depends(get_db)
+    intention_data: schemas.DailyIntentionCreate,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
+    db: Session = Depends(database.get_db)
 ):
     """Create today's Daily Intention, now driven by the service layer."""
     # Check if today's Daily Intention for the currently logged in user already exists
-    existing_intention = get_today_intention(db, current_user.id)
+    existing_intention = crud.get_today_intention(db, current_user.id)
     if existing_intention:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -307,13 +301,13 @@ def create_daily_intention(
     if process_result["needs_refinement"]:
         # Path 1: The service determined refinement is needed.
         # Do NOT save to DB. Return the AI feedback for the user to revise.
-        return DailyIntentionRefinementResponse(ai_feedback=process_result["ai_feedback"])
+        return schemas.DailyIntentionRefinementResponse(ai_feedback=process_result["ai_feedback"])
 
     else:
         # Path 2: The service approved the intention.
         # Now, we proceed with creating the database record.
         try:
-            db_intention = DailyIntention(
+            db_intention = models.DailyIntention(
                 user_id=current_user.id,
                 daily_intention_text=intention_data.daily_intention_text.strip(),
                 target_quantity=intention_data.target_quantity,
@@ -330,7 +324,7 @@ def create_daily_intention(
             db.refresh(stats)
 
             # Construct the success response
-            return DailyIntentionResponse(
+            return schemas.DailyIntentionResponse(
                 id=db_intention.id,
                 user_id=current_user.id,
                 daily_intention_text=db_intention.daily_intention_text,
@@ -353,9 +347,9 @@ def create_daily_intention(
             )
             
 
-@app.get("/intentions/today/me", response_model=DailyIntentionResponse)
+@app.get("/intentions/today/me", response_model=schemas.DailyIntentionResponse)
 def get_my_daily_intention(
-    intention: Annotated[DailyIntention, Depends(get_current_user_daily_intention)]
+    intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)]
     ):
     """
     Get today's Daily Intention for the currently logged in user.
@@ -368,7 +362,7 @@ def get_my_daily_intention(
         if intention.target_quantity > 0 else 0.0
     )
 
-    return DailyIntentionResponse(
+    return schemas.DailyIntentionResponse(
         id=intention.id,
         user_id=intention.user_id,
         daily_intention_text=intention.daily_intention_text,
@@ -380,11 +374,11 @@ def get_my_daily_intention(
         created_at=intention.created_at
     )
 
-@app.patch("/intentions/today/progress", response_model=DailyIntentionResponse)
+@app.patch("/intentions/today/progress", response_model=schemas.DailyIntentionResponse)
 def update_daily_intention_progress(
-    progress_data: DailyIntentionUpdate,
-    intention: Annotated[DailyIntention, Depends(get_current_user_daily_intention)],
-    db: Session = Depends(get_db),
+    progress_data: schemas.DailyIntentionUpdate,
+    intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    db: Session = Depends(database.get_db),
 ):
     """
     Updates Daily Intention progress for the currently logged in user - the core of the Daily Execution Loop!
@@ -418,7 +412,7 @@ def update_daily_intention_progress(
             if intention.target_quantity > 0 else 0.0
         )
 
-        return DailyIntentionResponse(
+        return schemas.DailyIntentionResponse(
             id=intention.id,
             user_id=intention.user_id,
             daily_intention_text=intention.daily_intention_text,
@@ -438,10 +432,10 @@ def update_daily_intention_progress(
             detail=f"Failed to update Daily Intention progress: {str(e)}"
         )
     
-@app.patch("/intentions/today/complete", response_model=DailyIntentionResponse)
+@app.patch("/intentions/today/complete", response_model=schemas.DailyIntentionResponse)
 def complete_daily_intention(
-    current_user: Annotated[User, Depends(get_current_user)], 
-    db: Session = Depends(get_db)
+    current_user: Annotated[models.User, Depends(security.get_current_user)], 
+    db: Session = Depends(database.get_db)
     ):
     """
     Mark today's Daily Intention for the currently logged in user as completed
@@ -453,7 +447,7 @@ def complete_daily_intention(
     """
 
     # Get today's Daily Intention for the currently logged in user
-    intention = get_today_intention(db, current_user.id)
+    intention = crud.get_today_intention(db, current_user.id)
     if not intention:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -468,7 +462,7 @@ def complete_daily_intention(
         db.commit()
         db.refresh(intention)
 
-        return DailyIntentionResponse(
+        return schemas.DailyIntentionResponse(
             id=intention.id,
             user_id=intention.user_id,
             daily_intention_text=intention.daily_intention_text,
@@ -488,10 +482,10 @@ def complete_daily_intention(
             detail=f"Failed to complete Daily Intention: {str(e)}"
         )
     
-@app.patch("/intentions/today/fail", response_model=DailyIntentionResponse)
+@app.patch("/intentions/today/fail", response_model=schemas.DailyIntentionResponse)
 def fail_daily_intention(
-    current_user: Annotated[User, Depends(get_current_user)], 
-    db: Session = Depends(get_db)
+    current_user: Annotated[models.User, Depends(security.get_current_user)], 
+    db: Session = Depends(database.get_db)
     ):
     """
     Mark today's Daily Intention for the currently logged in user as failed
@@ -503,7 +497,7 @@ def fail_daily_intention(
     """
 
     # Get today's Daily Intention for the currently logged in user
-    intention = get_today_intention(db, current_user.id)
+    intention = crud.get_today_intention(db, current_user.id)
     if not intention:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -523,7 +517,7 @@ def fail_daily_intention(
             if intention.target_quantity > 0 else 0.0
         )
 
-        return DailyIntentionResponse(
+        return schemas.DailyIntentionResponse(
             id=intention.id,
             user_id=intention.user_id,
             daily_intention_text=intention.daily_intention_text,
@@ -545,11 +539,11 @@ def fail_daily_intention(
     
 # FOCUS BLOCK ENDPOINTS
 
-@app.post("/focus-blocks", response_model=FocusBlockResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/focus-blocks", response_model=schemas.FocusBlockResponse, status_code=status.HTTP_201_CREATED)
 def create_focus_block(
-    block_data: FocusBlockCreate, 
-    daily_intention: Annotated[DailyIntention, Depends(get_current_user_daily_intention)],
-    db: Session = Depends(get_db)):
+    block_data: schemas.FocusBlockCreate, 
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    db: Session = Depends(database.get_db)):
     """
     Create a new Focus Block when the currently logged in user starts a timed execution sprint.
     Creates it by finding the user's active intention for the day.
@@ -559,9 +553,9 @@ def create_focus_block(
     # The dependency has already guaranteed the currently logged in user's Daily Intention!
     
     # NEW: Enforce "One Active Block at a Time" rule
-    existing_active_block = db.query(FocusBlock).filter(
-        FocusBlock.daily_intention_id == daily_intention.id,
-        FocusBlock.status.in_(['pending', 'in_progress'])
+    existing_active_block = db.query(models.FocusBlock).filter(
+        models.FocusBlock.daily_intention_id == daily_intention.id,
+        models.FocusBlock.status.in_(['pending', 'in_progress'])
     ).first()
 
     if existing_active_block:
@@ -571,7 +565,7 @@ def create_focus_block(
         )
     
     # Create the new Focus Block instance if the check passes using the ID from the found intention
-    new_block = FocusBlock(
+    new_block = models.FocusBlock(
         daily_intention_id=daily_intention.id,
         focus_block_intention=block_data.focus_block_intention,
         duration_minutes=block_data.duration_minutes
@@ -581,7 +575,7 @@ def create_focus_block(
         db.add(new_block)
         db.commit()
         db.refresh(new_block)
-        return FocusBlockResponse.model_validate(new_block)
+        return schemas.FocusBlockResponse.model_validate(new_block)
     except Exception as e:
         print(f"Database error on Focus Block creation: {e}")
         db.rollback()
@@ -590,16 +584,16 @@ def create_focus_block(
             detail=f"Failed to create Focus Block: {str(e)}"
         )
     
-@app.patch("/focus-blocks/{block_id}", response_model=FocusBlockResponse)
+@app.patch("/focus-blocks/{block_id}", response_model=schemas.FocusBlockResponse)
 def update_focus_block(
-    update_data: FocusBlockUpdate, 
-    current_user: Annotated[User, Depends(get_current_user)],
-    block: Annotated[FocusBlock, Depends(get_owned_focus_block)],
-    stats: Annotated[CharacterStats, Depends(get_current_user_stats)],
-    db: Session = Depends(get_db)
+    update_data: schemas.FocusBlockUpdate, 
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    block: Annotated[models.FocusBlock, Depends(get_owned_focus_block)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
+    db: Session = Depends(database.get_db)
     ):
     """Update a Focus Block's status and video URLs. Triggers stat progression upon completion via the service layer."""
-    # --- PRE-CONDITION CHECKS (This logic is fine to keep here) ---
+    # --- PRE-CONDITION CHECKS ---
     # The get_owned_focus_block dependency guarantees a Focus Block that belongs to the currently logged in user
     today = datetime.now(timezone.utc).date()
     if block.created_at.date() != today:
@@ -641,7 +635,7 @@ def update_focus_block(
         if xp_awarded > 0:
             db.refresh(stats)
             
-        return FocusBlockResponse.model_validate(block)
+        return schemas.FocusBlockResponse.model_validate(block)
 
     except Exception as e:
         db.rollback()
@@ -653,19 +647,19 @@ def update_focus_block(
 
 # DAILY RESULTS ENDPOINTS
 
-@app.post("/daily-results", response_model=DailyResultResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/daily-results", response_model=schemas.DailyResultResponse, status_code=status.HTTP_201_CREATED)
 def create_daily_result(
-    current_user: Annotated[User, Depends(get_current_user)],
-    daily_intention: Annotated[DailyIntention, Depends(get_current_user_daily_intention)],
-    stats: Annotated[CharacterStats, Depends(get_current_user_stats)], 
-    db: Session = Depends(get_db)
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)], 
+    db: Session = Depends(database.get_db)
 ):
     """Creates the evening Daily Result and triggers reflection via the service layer."""
     # The get_current_user_daily_intention dependency guarantees a Daily Intention from the currently logged in user
     
     # Check if Daily Result already exists for this intention
-    existing_result = db.query(DailyResult).filter(
-        DailyResult.daily_intention_id == daily_intention.id
+    existing_result = db.query(models.DailyResult).filter(
+        models.DailyResult.daily_intention_id == daily_intention.id
     ).first()
     if existing_result:
         raise HTTPException(
@@ -680,7 +674,7 @@ def create_daily_result(
     
     try:
         # 2. Use the data from the service to build the DB object
-        db_result = DailyResult(
+        db_result = models.DailyResult(
             daily_intention_id=daily_intention.id,
             succeeded_failed=reflection_data["succeeded"],
             ai_feedback=reflection_data["ai_feedback"],
@@ -697,7 +691,7 @@ def create_daily_result(
         db.refresh(stats)
 
         # Return using the simple, elegant, and consistent pattern
-        return DailyResultResponse.model_validate(db_result)
+        return schemas.DailyResultResponse.model_validate(db_result)
     
     except Exception as e:
         print(f"Database error: {e}") 
@@ -707,10 +701,10 @@ def create_daily_result(
             detail=f"Failed to create Daily Result: {str(e)}"
         )
     
-@app.get("/daily-results/{intention_id}", response_model=DailyResultResponse)
+@app.get("/daily-results/{intention_id}", response_model=schemas.DailyResultResponse)
 def get_daily_result(
     # The dependency does all the work: finds the result AND verifies ownership.
-    result: Annotated[DailyResult, Depends(get_owned_daily_result_by_intention_id)]
+    result: Annotated[models.DailyResult, Depends(get_owned_daily_result_by_intention_id)]
     ):
     """
     Get the Daily Result for a specific, user-owned intention.
@@ -718,15 +712,15 @@ def get_daily_result(
     """
     # The 'result' object is guaranteed to be the correct, owned DailyResult.
     # All we have to do is convert it to the response model and return it.
-    return DailyResultResponse.model_validate(result)
+    return schemas.DailyResultResponse.model_validate(result)
 
-@app.post("/daily-results/{result_id}/recovery-quest", response_model=RecoveryQuestResponse)
+@app.post("/daily-results/{result_id}/recovery-quest", response_model=schemas.RecoveryQuestResponse)
 def respond_to_recovery_quest(
-    quest_response: RecoveryQuestInput,
-    result: Annotated[DailyResult, Depends(get_owned_daily_result_by_result_id)],
-    stats: Annotated[CharacterStats, Depends(get_current_user_stats)],
-    current_user: Annotated[User, Depends(get_current_user)], # Added for the service call
-    db: Session = Depends(get_db)
+    quest_response: schemas.RecoveryQuestInput,
+    result: Annotated[models.DailyResult, Depends(get_owned_daily_result_by_result_id)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
+    current_user: Annotated[models.User, Depends(security.get_current_user)], # Added for the service call
+    db: Session = Depends(database.get_db)
 ):
     """Submits user's reflection on a failed day and receives AI coaching via the service layer."""
     
@@ -767,7 +761,7 @@ def respond_to_recovery_quest(
         db.refresh(stats)
 
         # 4. RESPOND: Return the data, using the coaching feedback from the service
-        return RecoveryQuestResponse(
+        return schemas.RecoveryQuestResponse(
             recovery_quest_response=result.recovery_quest_response,
             ai_coaching_feedback=coaching_data["ai_coaching_feedback"]
         )

@@ -1,5 +1,3 @@
-# app/services.py
-
 from sqlalchemy.orm import Session
 from . import models, schemas
 import random
