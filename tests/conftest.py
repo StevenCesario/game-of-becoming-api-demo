@@ -21,7 +21,6 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-
 # --- Pytest Fixtures ---
 
 @pytest.fixture(scope="function")
@@ -42,9 +41,7 @@ def db_session():
 
 @pytest.fixture(scope="function")
 def client(db_session):
-    """
-    Pytest fixture to create a TestClient with the database dependency overridden.
-    """
+    """Pytest fixture to create a TestClient with the database dependency overridden."""
     def override_get_db():
         """Dependency override to use the test database."""
         try:
@@ -59,3 +56,23 @@ def client(db_session):
 
     # Clean up the override after the test is done
     app.dependency_overrides.clear()
+
+@pytest.fixture(scope="function")
+def user_token(client):
+    """Provide an authenticated user's bearer token."""
+    payload = {"name": "Demo", "email": "demo@example.com",
+               "hrga": "LinkedIn Outreach", "password": "pass123"}
+    r = client.post("/register", json=payload)
+    login = client.post("/login", data={"username": "demo@example.com",
+                                        "password": "pass123"})
+    return login.json()["access_token"]
+
+@pytest.fixture(scope="function")
+def today_intention_id(client, user_token):
+    """Create one daily intention and yield its id."""
+    header = {"Authorization": f"Bearer {user_token}"}
+    resp = client.post("/intentions", headers=header,
+                       json={"daily_intention_text": "Send 5 emails",
+                             "target_quantity": 5, "focus_block_count": 3})
+    assert resp.status_code == 201
+    yield resp.json()["id"]
