@@ -59,15 +59,19 @@ def client(db_session):
 
 @pytest.fixture(scope="function")
 def user_token(client):
-    """Provide an authenticated user's bearer token."""
-    payload = {"name": "Demo", "email": "demo@example.com",
-               "hrga": "LinkedIn Outreach", "password": "pass123"}
-    client.post("/register", json=payload)
-    login = client.post("/login", data={"username": "demo@example.com",
-                                        "password": "pass123"})
-    token_body = login.json()
-    print("Login payload:", token_body) # temp debugging to stop guessing the field name
-    return token_body.get("access_token") or token_body["accessToken"]
+    payload = {
+        "name": "Demo", "email": "demo@example.com",
+        "hrga": "LinkedIn Outreach", "password": "pass123"
+    }
+    r = client.post("/register", json=payload)
+    assert r.status_code == 201, f"registration failed: {r.json()}"
+
+    login = client.post("/login", data={
+        "username": "demo@example.com", "password": "pass123"
+    })
+    assert login.status_code == 200, f"login failed: {login.json()}"
+
+    return login.json()["access_token"]   # now guaranteed to exist
 
 @pytest.fixture(scope="function")
 def today_intention_id(client, user_token):
