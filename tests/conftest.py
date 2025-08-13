@@ -62,10 +62,11 @@ def user_token(client):
     """Provide an authenticated user's bearer token."""
     payload = {"name": "Demo", "email": "demo@example.com",
                "hrga": "LinkedIn Outreach", "password": "pass123"}
-    r = client.post("/register", json=payload)
+    client.post("/register", json=payload)
     login = client.post("/login", data={"username": "demo@example.com",
                                         "password": "pass123"})
-    return login.json()["access_token"]
+    token_body = login.json()
+    return token_body.get("access_token") or token_body["accessToken"]
 
 @pytest.fixture(scope="function")
 def today_intention_id(client, user_token):
