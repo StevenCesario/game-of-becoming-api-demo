@@ -8,7 +8,7 @@ def test_create_daily_intention_flow(client, user_token):
     assert response.status_code == 201
 
 
-def test_daily_results_cannot_get_duplicated(client, user_token, today_intention_id):
+def test_daily_results_cannot_get_duplicated(client, user_token):
     """Evening reflection can only be posted once per intention."""
     headers = {"Authorization": f"Bearer {user_token}"}
     
@@ -20,16 +20,22 @@ def test_daily_results_cannot_get_duplicated(client, user_token, today_intention
     assert r2.status_code == 400
     assert "already exists" in r2.json()["detail"]
 
-def test_completed_focus_block_awards_xp(client, user_token, today_intention_id):
-    """Completing a Focus Block awards XP to the user"""
+def test_completed_focus_block_awards_xp(client, user_token):
+    """Focus-to-XP loop: an authenticated user finishes a timed sprint,
+    marks the block complete, and sees an immediate +10 XP bump on their stats.
+    This proves the service layer's stat-progression integration end-to-end."""
     headers = {"Authorization": f"Bearer: {user_token}"}
 
-    # 1. Create a Focus Block via Daily Intention
-    b = client.post("/focus-blocks", headers=headers,
-                     json={"focus_block_intention": "finish email 1-3",
-                           "duration_minutes": 25})
-    block = b.json()
-    block_id = block["id"]
+    # 1. Create the first (and only) Focus Block for that Daily Intention
+    resp = client.post(
+        "/focus-blocks",
+        headers=headers,
+        json={"focus_block_intention": "finish email 1-3", 
+              "duration_minutes": 25}
+    )
+    assert resp.status_code == 201
+
+    block_id = resp.json()["id"]
 
     # 1.5 Grab initial stats (for step 3)
     start = client.get("/users/me/stats", headers=headers).json()
