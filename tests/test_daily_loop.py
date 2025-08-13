@@ -24,7 +24,7 @@ def test_completed_focus_block_awards_xp(client, user_token):
     """Focus-to-XP loop: an authenticated user finishes a timed sprint,
     marks the block complete, and sees an immediate +10 XP bump on their stats.
     This proves the service layer's stat-progression integration end-to-end."""
-    headers = {"Authorization": f"Bearer: {user_token}"}
+    headers = {"Authorization": f"Bearer {user_token}"}
 
     # 1. Create the first (and only) Focus Block for that Daily Intention
     resp = client.post(
