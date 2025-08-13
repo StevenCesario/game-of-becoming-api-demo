@@ -79,6 +79,7 @@ def today_intention_id(client, user_token):
     header = {"Authorization": f"Bearer {user_token}"}
     resp = client.post("/intentions", headers=header,
                        json={"daily_intention_text": "Send 5 emails",
-                             "target_quantity": 5, "focus_block_count": 3})
+                             "target_quantity": 5, "focus_block_count": 3,
+                             "is_refined": True}) # Force approved branch so that we can grab "id" and "xp" deterministically
     assert resp.status_code == 201
     yield resp.json()["id"]
