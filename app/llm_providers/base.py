@@ -21,4 +21,3 @@ class BaseLLMProvider(ABC):
         that conforms to that model's structure.
         """
         pass
-
