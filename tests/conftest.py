@@ -77,6 +77,7 @@ def user_token(client):
 def today_intention_id(client, user_token):
     """Create one daily intention and yield its id."""
     header = {"Authorization": f"Bearer {user_token}"}
+    client.delete("/focus-blocks/today", headers=header) # Ensure no leftover active Focus Blocks; the "only one active block" rule
     resp = client.post("/intentions", headers=header,
                        json={"daily_intention_text": "Send 5 emails",
                              "target_quantity": 5, "focus_block_count": 3,
