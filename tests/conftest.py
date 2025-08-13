@@ -66,6 +66,7 @@ def user_token(client):
     login = client.post("/login", data={"username": "demo@example.com",
                                         "password": "pass123"})
     token_body = login.json()
+    print("Login payload:", token_body) # temp debugging to stop guessing the field name
     return token_body.get("access_token") or token_body["accessToken"]
 
 @pytest.fixture(scope="function")
