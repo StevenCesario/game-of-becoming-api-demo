@@ -2,62 +2,103 @@
 
 A robust FastAPI backend that transforms personal development and goal achievement into an engaging, stat-based role-playing game. This project is currently in active development, and "The Game of Becoming" serves as its working title.
 
-[![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal)](https://fastapi.tiangolo.com)
-[![CI/CD](https://github.com/StevenLomon/game-of-becoming/actions/workflows/ci.yml/badge.svg)](https://github.com/StevenLomon/game-of-becoming/actions/workflows/ci.yml)
-[![Testing](https://img.shields.io/badge/Tests-100%25%20Passed-brightgreen)](tests/)
+[![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-red)](https://www.sqlalchemy.org/)
+[![CI/CD](https://github.com/stevenlomon/game-of-becoming-api-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenlomon/game-of-becoming-api-demo/actions/workflows/ci.yml)
 
 > ⚠️ **Demonstration Repository:** This repository showcases the architecture, testing, and API design of a larger, proprietary project. The core business logic in the `services` layer has been replaced with simplified, mock implementations for demonstration purposes.
 
-## 🎯 Core Concept
+## 🎯 The Problem: The "Self-Development Trap"
 
-Traditional journaling and habit-tracking apps often fail because they lack engagement. This application solves this by applying proven game mechanics to personal development. The core concept is currently being explored under the name "The Game of Becoming."
+For ambitious entrepreneurs and professionals, the path to growth is often a frustrating cycle. We know *what* to do, but execution blockers, procrastination, and a loss of self-trust create a loop of "self-development hell." Traditional habit trackers and to-do lists fail because they lack engagement and don't address the underlying motivational challenges.
 
--   **Problem:** It's hard to stay motivated with long-term goals. Progress is often invisible.
--   **Solution:** Frame daily actions as "quests" and personal growth as "leveling up." Provide tangible, visible feedback (stats, XP) for every positive action, creating a powerful motivation loop.
+This system is designed to break that cycle.
 
-## ✨ Key Features
+## ✨ The Solution: Gamify Your Growth
 
--   **Secure User Authentication**: Full user registration and login system using JWT (JSON Web Tokens) for stateless, secure sessions.
--   **Character Creation**: Users create a unique in-game character to represent their journey.
--   **AI-Powered Intentions**: (Mocked) AI service helps users craft powerful, actionable daily intentions.
--   **Focus Blocks**: A core game mechanic where users commit to and complete timed blocks of focused work.
--   **Stat Progression**: Earn XP and level up stats (e.g., Intellect, Discipline, Mindfulness) by completing intentions and focus blocks.
--   **Relational Database**: Robust data persistence using SQLAlchemy and PostgreSQL, with migrations managed by Alembic.
--   **Automated Testing**: Comprehensive integration test suite using Pytest to ensure API reliability.
--   **Continuous Integration**: GitHub Actions pipeline automatically installs dependencies, runs tests, and validates code on every push.
+This API provides the backend foundation for an application that reframes personal and business growth as an engaging role-playing game. By applying the same proven game mechanics we were addicted to in our youth, it creates a powerful, intrinsic motivation loop.
+
+* **Problem:** It's hard to stay consistent when progress feels invisible.
+* **Solution:** Frame daily actions as **Quests**, focused work as **Execution Sprints**, and personal growth as **Leveling Up**. Provide tangible, visible feedback (XP, Character Stats) for every action taken, turning failure into a learning opportunity and success into a rewarding experience.
+
+## 🔑 Key Features & Technical Highlights
+
+⚡️ **Modern & Robust Backend**
+* Built with **FastAPI** for high-performance, async-ready API endpoints.
+* **SQLAlchemy 2.0** for a fully type-annotated, modern ORM experience.
+* **Pydantic V2** for rigorous data validation, serialization, and clear API contracts.
+* **Alembic** for safe and reliable database schema migrations.
+
+🛡️ **Secure & Scalable Architecture**
+* **Secure User Authentication** with JWT for stateless, secure sessions.
+* **Clean Architecture** with a clear separation of concerns (API endpoints, business logic `services`, data access `crud`, and database `models`).
+* **Dependency Injection** used throughout for maintainable and testable code.
+* **Eager Loading** (`joinedload`) implemented for efficient database queries, solving the N+1 problem.
+
+🎮 **Engaging Game Mechanics**
+* **Character Progression:** Users earn XP and level up core stats like `Clarity`, `Discipline`, and `Resilience` by completing their goals.
+* **Daily Intentions:** A core game loop where users set a single, measurable goal for the day.
+* **Focus Blocks:** Timed execution sprints to "chunk down" the daily intention and make progress.
+* **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain `Resilience` XP.
+
+🤖 **AI-Ready Service Layer**
+* A "hollowed-out" service layer demonstrates how to cleanly integrate with external AI providers (like Anthropic Claude) for intelligent feedback and coaching, without coupling the core application to a specific vendor.
+
+✅ **Fully Tested & Automated**
+* Comprehensive integration test suite using **Pytest**.
+* Separate in-memory test database ensures tests are isolated and fast.
+* **GitHub Actions CI/CD pipeline** automatically runs tests on every push to `main`, ensuring code quality and reliability.
 
 ## 🏗️ System Architecture
-User Client (e.g., Mobile/Web App)
-↓ (HTTPS API Requests)
-FastAPI Application
-|
-├──> Secure Authentication (JWT)
-|
-├─> Business Logic (Intentions, Focus Blocks)
-|     ↓
-|   (Mock AI Service Call)
-|
-├──> Database Layer (SQLAlchemy ORM)
-↓
-PostgreSQL Database (Managed by Alembic)
+User Client (Web/Mobile App)
+│
+▼ (HTTPS API Requests)
++---------------------------------+
+|      FastAPI Application        |
+|  (main.py - Endpoint Layer)     |
++---------------------------------+
+│
+▼ (Business Logic Delegation)
++---------------------------------+
+|      Service Layer              |
+|  (services.py - Game Mechanics) |
++---------------------------------+
+│
+▼ (Database Operations)
++---------------------------------+
+|      Data Access Layer          |
+|  (crud.py - Read/Write Logic)   |
++---------------------------------+
+│
+▼ (ORM Mapping)
++---------------------------------+
+|      Database Models & Schema   |
+|  (models.py, schemas.py)        |
++---------------------------------+
+│
+▼
++---------------------------------+
+|      PostgreSQL Database        |
+|  (Migrations via Alembic)       |
++---------------------------------+
 
 ## 🚀 How to Run Locally
 
 ### Prerequisites
--   Python 3.11+
--   PostgreSQL installed and running
+* Python 3.12+
+* PostgreSQL installed and running
 
 ### 1. Clone and Set Up
 
-```console
+```bash
 # Clone the repository
-git clone https://github.com/your-username/game-of-becoming.git
-cd game-of-becoming
+git clone [https://github.com/stevenlomon/game-of-becoming-api-demo.git](https://github.com/stevenlomon/game-of-becoming-api-demo.git)
+cd game-of-becoming-api-demo
 
 # Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate
+python -m venv env
+source env/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
