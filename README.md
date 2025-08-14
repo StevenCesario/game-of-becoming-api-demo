@@ -1,11 +1,13 @@
 # 🎮 Codename: The Game of Becoming
 
-A robust FastAPI backend that transforms personal growth and daily journaling into an engaging, stat-based role-playing game. This project is currently in active development, and "The Game of Becoming" serves as its working title.
+A robust FastAPI backend that transforms personal development and goal achievement into an engaging, stat-based role-playing game. This project is currently in active development, and "The Game of Becoming" serves as its working title.
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal)](https://fastapi.tiangolo.com)
 [![CI/CD](https://github.com/StevenLomon/game-of-becoming/actions/workflows/ci.yml/badge.svg)](https://github.com/StevenLomon/game-of-becoming/actions/workflows/ci.yml)
 [![Testing](https://img.shields.io/badge/Tests-100%25%20Passed-brightgreen)](tests/)
+
+> ⚠️ **Demonstration Repository:** This repository showcases the architecture, testing, and API design of a larger, proprietary project. The core business logic in the `services` layer has been replaced with simplified, mock implementations for demonstration purposes.
 
 ## 🎯 Core Concept
 
