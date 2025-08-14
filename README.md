@@ -51,6 +51,7 @@ This API provides the backend foundation for an application that reframes person
 * **GitHub Actions CI/CD pipeline** automatically runs tests on every push to `main`, ensuring code quality and reliability.
 
 ## 🏗️ System Architecture
+```text
 User Client (Web/Mobile App)
        │
        ▼ (HTTPS API Requests)
@@ -82,6 +83,7 @@ User Client (Web/Mobile App)
 |      PostgreSQL Database        |
 |  (Migrations via Alembic)       |
 +---------------------------------+
+```
 
 ## 🚀 How to Run Locally
 
