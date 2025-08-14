@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from .models import User, UserAuth, CharacterStats, DailyIntention
 from .schemas import UserCreate
@@ -31,8 +31,14 @@ def create_user(db: Session, user_data: UserCreate) -> User:
     return new_user
 
 def get_user(db: Session, user_id: int) -> User | None:
-    """Get a user by their unique ID. Returns None if not found"""
-    return db.query(User).filter(User.id == user_id).first()
+    """
+    Get a user by their unique ID, and eagerly load their auth and stats.
+    Returns None if not found.
+    """
+    return db.query(User).options(
+        joinedload(User.auth),
+        joinedload(User.character_stats)
+    ).filter(User.id == user_id).first()
 
 def get_user_by_email(db: Session, email: str) -> User | None:
     """Get a user by email. Returns None if not found."""

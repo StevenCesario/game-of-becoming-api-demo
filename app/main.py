@@ -247,12 +247,11 @@ def get_user(current_user: Annotated[models.User, Depends(security.get_current_u
 
 @app.get("/users/me/stats", response_model=schemas.CharacterStatsResponse)
 def get_my_character_stats(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
-    db: Session = Depends(database.get_db)
+    current_user: Annotated[models.User, Depends(security.get_current_user)]
     ):
     """Get the character stats for the currently authenticated user."""
-    # Use the fresh 'db' session to query for the stats, we can't rely on current_user
-    stats = db.query(models.CharacterStats).filter(models.CharacterStats.user_id==current_user.id).first()
+    # Access the stats directly through the relationship
+    stats = current_user.character_stats
 
     # The user should always have stats, but it's good practice to check
     if not stats:
