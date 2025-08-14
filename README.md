@@ -88,46 +88,44 @@ User Client (Web/Mobile App)
 ## 🚀 How to Run Locally
 
 ### Prerequisites
--   Python 3.11+
--   PostgreSQL installed and running
+* Python 3.12+
+* PostgreSQL installed and running
 
 ### 1. Clone and Set Up
 
-```console
+```bash
 # Clone the repository
-git clone https://github.com/your-username/game-of-becoming.git
-cd game-of-becoming
+git clone [https://github.com/stevenlomon/game-of-becoming-api-demo.git](https://github.com/stevenlomon/game-of-becoming-api-demo.git)
+cd game-of-becoming-api-demo
 
 # Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate
+python -m venv env
+source env/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configure the Database
+### 2. Configure Environment Variables
 
-You will need to create a database in PostgreSQL and provide its connection URL to the application.
+Create a `.env` file in the project root. You can do this by copying the `.env.example` file if one exists, or by creating a new file and adding the following content:
 
-1. Create a database, for example, named `becoming_db`.
-2. Open the `alembic.ini` file and find the `sqlalchemy.url `line. Update it with your database connection string.
-
-```console
-# Example for a user 'myuser' with password 'mypass'
-sqlalchemy.url = postgresql://myuser:mypass@localhost/becoming_db
+```bash
+DATABASE_URL="postgresql://user:password@localhost/becoming_db"
+SECRET_KEY="your_super_secret_random_string_here"
+# ANTHROPIC_API_KEY="sk-..." # Optional, for connecting to a real AI service
 ```
 
-3. Open `app/database.py` and update the `DATABASE_URL` variable with the same connection string.
+*Replace the values with your actual database connection string and a unique secret key.*
 
 ### 3. Apply Database Migrations
 With the configuration set, apply the schema to your newly created database.
-```console
+```bash
 alembic upgrade head
 ```
 
 ### 4. Run the API Server
-```console
+```bash
 uvicorn app.main:app --reload
 ```
 The API will be available at `http://127.0.0.1:8000.`
@@ -138,7 +136,7 @@ Open your browser to `http://127.0.0.1:8000/docs` to see the interactive Swagger
 ## 🧪 Testing
 The project is configured with a complete integration test suite that runs against a separate test database, ensuring that tests do not interfere with development data.
 
-```console
+```bash
 # To run the test suite:
 pytest -v
 ```
