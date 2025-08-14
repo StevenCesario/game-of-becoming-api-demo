@@ -44,6 +44,7 @@ This API provides the backend foundation for an application that reframes person
 
 🤖 **AI-Ready Service Layer**
 * A "hollowed-out" service layer demonstrates how to cleanly integrate with external AI providers (like Anthropic Claude) for intelligent feedback and coaching, without coupling the core application to a specific vendor.
+* The **Provider Factory** (`llm_providers/factory.py`) makes the system extensible and pluggable, allowing for new AI services (e.g., OpenAI, Gemini) to be added with minimal code changes, without affecting the core application logic.
 
 ✅ **Fully Tested & Automated**
 * Comprehensive integration test suite using **Pytest**.
