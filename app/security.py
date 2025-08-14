@@ -1,14 +1,14 @@
-import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
-from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from jose import JWTError, jwt
+import os
 
-from .crud import get_user # To look up users in the database
-from .database import get_db # Import our db session generator
-from .schemas import TokenData # Import our token payload schema
+import app.crud as crud # To look up users in the database
+import app.database as database # Import our db session generator
+import app.schemas as schemas # Import our token payload schema
 
 # This object is what FastAPI uses to extract the token from the request header.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -34,7 +34,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def get_current_user(
         token: str = Depends(oauth2_scheme),
-        db: Session = Depends(get_db)
+        db: Session = Depends(database.get_db)
 ):
     """
     The "Wristband Checker". A dependency that:
@@ -55,12 +55,12 @@ def get_current_user(
         if user_id is None:
             raise credentials_exception
         # We validate that the payload has the data shape we expect
-        token_data = TokenData(user_id=user_id)
+        token_data = schemas.TokenData(user_id=user_id)
     except JWTError: # Catches any error from jose: expiration, invalid signature, etc.
         raise credentials_exception
     
     # We have a valid token, now get the user from the DB
-    user = get_user(db, user_id=int(token_data.user_id))
+    user = crud.get_user(db, user_id=int(token_data.user_id))
 
     if user is None: # In the rare case where the user might have been deleted after the token was issued
         raise credentials_exception

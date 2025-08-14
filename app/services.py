@@ -1,6 +1,8 @@
 from sqlalchemy.orm import Session
-from . import models, schemas
 import random
+
+import app.models as models
+import app.schemas as schemas
 
 """
 ======================================================================
