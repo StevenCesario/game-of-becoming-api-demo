@@ -52,32 +52,32 @@ This API provides the backend foundation for an application that reframes person
 
 ## 🏗️ System Architecture
 User Client (Web/Mobile App)
-│
-▼ (HTTPS API Requests)
+       │
+       ▼ (HTTPS API Requests)
 +---------------------------------+
 |      FastAPI Application        |
 |  (main.py - Endpoint Layer)     |
 +---------------------------------+
-│
-▼ (Business Logic Delegation)
+       │
+       ▼ (Business Logic Delegation)
 +---------------------------------+
 |      Service Layer              |
 |  (services.py - Game Mechanics) |
 +---------------------------------+
-│
-▼ (Database Operations)
+       │
+       ▼ (Database Operations)
 +---------------------------------+
 |      Data Access Layer          |
 |  (crud.py - Read/Write Logic)   |
 +---------------------------------+
-│
-▼ (ORM Mapping)
+       │
+       ▼ (ORM Mapping)
 +---------------------------------+
 |      Database Models & Schema   |
 |  (models.py, schemas.py)        |
 +---------------------------------+
-│
-▼
+       │
+       ▼
 +---------------------------------+
 |      PostgreSQL Database        |
 |  (Migrations via Alembic)       |
@@ -86,19 +86,19 @@ User Client (Web/Mobile App)
 ## 🚀 How to Run Locally
 
 ### Prerequisites
-* Python 3.12+
-* PostgreSQL installed and running
+-   Python 3.11+
+-   PostgreSQL installed and running
 
 ### 1. Clone and Set Up
 
-```bash
+```console
 # Clone the repository
-git clone [https://github.com/stevenlomon/game-of-becoming-api-demo.git](https://github.com/stevenlomon/game-of-becoming-api-demo.git)
-cd game-of-becoming-api-demo
+git clone https://github.com/your-username/game-of-becoming.git
+cd game-of-becoming
 
 # Create and activate a virtual environment
-python -m venv env
-source env/bin/activate
+python -m venv venv
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
