@@ -1,5 +1,19 @@
 #Full, self-contained showcase of the daily loop endpoints.
 
+def test_creat_daily_intention_unauthenticated_fails(client):
+    """Verify that an unatuhenticated user receives a 401 error when trying to create a Daily Intention"""
+    payload = {
+        "daily_intention_text": "Try to sneak in",
+        "target_quantity": 1,
+        "focus_block_count": 1,
+        "is_refined": True
+    }
+    # No headers are sent with this request
+    response = client.post("/intentions", json=payload)
+    assert response.status == 401
+    assert response.json()["detail"] == "Not authenticated"
+
+
 def test_create_daily_intention_flow(client, user_token):
     """Authenticated user creates a Daily Intention."""
     headers = {"Authorization": f"Bearer {user_token}"}
