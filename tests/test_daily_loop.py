@@ -92,3 +92,61 @@ def test_completed_focus_block_awards_xp(client, user_token):
 
     end = client.get("/users/me/stats", headers=headers).json()
     assert end["xp"] == start_xp + 10
+
+def test_full_fail_forward_recovery_quest_loop(client, user_token):
+    """
+    Tests the entire "Fail Forward" loop:
+    1. Create an intention and fail to complete it.
+    2. Create a daily result, which should trigger a recovery quest.
+    3. Respond to the recovery quest.
+    4. Verify that the user's 'resilience' stat has increased.
+    """
+    headers = {"Authorization": f"Bearer {user_token}"}
+
+    # 1. Create a Daily Intention
+    intention_payload = {
+        "daily_intention_text": "Send 5 Upwork proposals",
+        "target_quantity": 5,
+        "focus_block_count": 3,
+        "is_refined": True
+    }
+    intention_resp = client.post("/intentions", headers=headers, json=intention_payload)
+    assert intention_resp.status_code == 201
+
+    # 2. Partially complete the intention (i.e. fail)
+    progress_payload = {"completed_quantity": 3}
+    progress_resp = client.patch("intentions/today/progress", headers=headers, json=progress_payload)
+    assert progress_resp.status_code == 200
+    assert progress_resp.json()["status"] == "in_progress"
+
+    # 3. Trigger the evening reflection (Daily Result creation)
+    # This is the step that should generate the Recovery Quest
+    result_resp = client.post("/daily-results", headers=headers)
+    assert result_resp.status_code == 201
+    result_data = result_resp.json()
+    assert result_data["succeeded_failed"] is False
+    assert result_data["recovery_quest"] is not None # Verify a Recovery Quest was generated
+    result_id = result_data["id"]
+
+    # 4. Check the user's starting stats
+    start_stats_resp = client.get("/users/me/stats", headers=headers)
+    assert start_stats_resp.status_code == 200
+    start_resilience = start_stats_resp.json()["resilience"]
+
+    # 5. Respond to the Recovery Quest
+    quest_response_payload = {
+        "recovery_quest_response": "I got distracted by social media in the afternoon and lost my momentum."
+    }
+    quest_resp = client.post(
+        f"/daily-results/{result_id}/recovery-quest",
+        headers=headers,
+        json=quest_response_payload
+    )
+    assert quest_resp.status_code == 200
+    assert "ai_coaching_feedback" in quest_resp.json()
+
+    # 6. Verify that the Resilience stat has increased
+    end_stats_resp = client.get("/users/me/stats", headers=headers)
+    assert end_stats_resp.status_code == 200
+    end_resilience = end_stats_resp.json()["resilience"]
+    assert end_resilience == start_resilience + 1
