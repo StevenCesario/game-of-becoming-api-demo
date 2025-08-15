@@ -407,7 +407,7 @@ def update_daily_intention_progress(
     
 @app.patch("/intentions/today/complete", response_model=schemas.DailyIntentionResponse)
 def complete_daily_intention(
-    current_user: Annotated[models.User, Depends(security.get_current_user)], 
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     db: Session = Depends(database.get_db)
     ):
     """
@@ -418,33 +418,26 @@ def complete_daily_intention(
     - Discipline stat increase
     - Streak continuation
     """
-
-    # Get today's Daily Intention for the currently logged in user
-    intention = crud.get_today_intention(db, current_user.id)
-    if not intention:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Daily Intention for today not found. Ready to create one?"
-        )
+    # The dependency guarantees Daily Intention that belongs to the currently logged in user
     
     try:
         # Mark as completed
-        intention.status = 'completed'
-        intention.completed_quantity = intention.target_quantity  # Ensure full completion
+        daily_intention.status = 'completed'
+        daily_intention.completed_quantity = daily_intention.target_quantity  # Ensure full completion
 
         db.commit()
-        db.refresh(intention)
+        db.refresh(daily_intention)
 
         return schemas.DailyIntentionResponse(
-            id=intention.id,
-            user_id=intention.user_id,
-            daily_intention_text=intention.daily_intention_text,
-            target_quantity=intention.target_quantity,
-            completed_quantity=intention.completed_quantity,
-            focus_block_count=intention.focus_block_count,
+            id=daily_intention.id,
+            user_id=daily_intention.user_id,
+            daily_intention_text=daily_intention.daily_intention_text,
+            target_quantity=daily_intention.target_quantity,
+            completed_quantity=daily_intention.completed_quantity,
+            focus_block_count=daily_intention.focus_block_count,
             completion_percentage=100.0,  # Fully completed
-            status=intention.status,
-            created_at=intention.created_at
+            status=daily_intention.status,
+            created_at=daily_intention.created_at
         )
     
     except Exception as e:
@@ -457,7 +450,7 @@ def complete_daily_intention(
     
 @app.patch("/intentions/today/fail", response_model=schemas.DailyIntentionResponse)
 def fail_daily_intention(
-    current_user: Annotated[models.User, Depends(security.get_current_user)], 
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     db: Session = Depends(database.get_db)
     ):
     """
@@ -468,38 +461,31 @@ def fail_daily_intention(
     - AI generates and initiates Recovery Quest
     - Opportunity to gain Resilience stat
     """
-
-    # Get today's Daily Intention for the currently logged in user
-    intention = crud.get_today_intention(db, current_user.id)
-    if not intention:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Daily Intention for today not found. Ready to create one?"
-        )
+    # The dependency once again guarantees Daily Intention that belongs to the currently logged in user
     
     try:
         # Mark as failed
-        intention.status = 'failed'
+        daily_intention.status = 'failed'
         
         db.commit()
-        db.refresh(intention)
+        db.refresh(daily_intention)
 
         # Calculate the final completion percentage
         completion_percentage = (
-            (intention.completed_quantity / intention.target_quantity) * 100
-            if intention.target_quantity > 0 else 0.0
+            (daily_intention.completed_quantity / daily_intention.target_quantity) * 100
+            if daily_intention.target_quantity > 0 else 0.0
         )
 
         return schemas.DailyIntentionResponse(
-            id=intention.id,
-            user_id=intention.user_id,
-            daily_intention_text=intention.daily_intention_text,
-            target_quantity=intention.target_quantity,
-            completed_quantity=intention.completed_quantity,
-            focus_block_count=intention.focus_block_count,
+            id=daily_intention.id,
+            user_id=daily_intention.user_id,
+            daily_intention_text=daily_intention.daily_intention_text,
+            target_quantity=daily_intention.target_quantity,
+            completed_quantity=daily_intention.completed_quantity,
+            focus_block_count=daily_intention.focus_block_count,
             completion_percentage=completion_percentage,  # Use the calculated percentage at the time of failure
-            status=intention.status,
-            created_at=intention.created_at
+            status=daily_intention.status,
+            created_at=daily_intention.created_at
         )
     
     except Exception as e:
