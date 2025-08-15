@@ -325,15 +325,15 @@ def get_my_daily_intention(
     ):
     """
     Get today's Daily Intention for the currently logged in user.
-    
     The core of the Daily Commitment Screen!
     """
-    # Calculate completion percentage
+    # 1. Calculate the value that doesn't exist in the database model.
     completion_percentage = (
         (intention.completed_quantity / intention.target_quantity) * 100
         if intention.target_quantity > 0 else 0.0
     )
 
+    # 2. Because we have a calculated value, we MUST manually construct the Pydantic response model. 
     return schemas.DailyIntentionResponse(
         id=intention.id,
         user_id=intention.user_id,
@@ -343,7 +343,8 @@ def get_my_daily_intention(
         focus_block_count=intention.focus_block_count,
         completion_percentage=completion_percentage, # Use the calculated value
         status=intention.status,
-        created_at=intention.created_at
+        created_at=intention.created_at,
+        ai_feedback=intention.ai_feedback
     )
 
 @app.patch("/intentions/today/progress", response_model=schemas.DailyIntentionResponse)
