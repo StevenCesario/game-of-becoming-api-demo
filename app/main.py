@@ -546,14 +546,17 @@ def create_focus_block(
 @app.patch("/focus-blocks/{block_id}", response_model=schemas.FocusBlockResponse)
 def update_focus_block(
     update_data: schemas.FocusBlockUpdate, 
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
     block: Annotated[models.FocusBlock, Depends(get_owned_focus_block)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
     ):
-    """Update a Focus Block's status and video URLs. Triggers stat progression upon completion via the service layer."""
-    # --- PRE-CONDITION CHECKS ---
+    """
+    Updates a Focus Block's status or video URLs.
+    Awards XP upon completion by delegating to the service layer.
+    """
     # The get_owned_focus_block dependency guarantees a Focus Block that belongs to the currently logged in user
+    
+    # This check ensures the block is from today, preserving the game's integrity.
     today = datetime.now(timezone.utc).date()
     if block.created_at.date() != today:
         raise HTTPException(
@@ -561,22 +564,18 @@ def update_focus_block(
             detail="This Focus Block is from a previous day and can no longer be updated."
         )
 
-    # --- BUSINESS LOGIC & STATE UPDATES ---
     try:
         # Flag to track if we need to commit stats changes
         xp_awarded = 0
 
         # Check if the block is being marked as completed for the first time
         if update_data.status == "completed" and block.status != "completed":
-            # 1. DELEGATE: Call the service to handle completion logic
-            completion_result = services.complete_focus_block(
-                db=db, user=current_user, block=block
-            )
-            # 2. CAPTURE: Get the result from the service
+            # Delegate completion logic and xp gain to the service layer
+            completion_result = services.complete_focus_block(db=db, user=stats.user, block=block)
+            # Get the result from the service
             xp_awarded = completion_result.get("xp_awarded", 0)
 
-        # Update block's data directly from the request.
-        # This is simple state mapping, perfect for the endpoint layer.
+        # Update the block's data from the request payload
         if update_data.status is not None:
             block.status = update_data.status.strip()
         if update_data.pre_block_video_url is not None:
@@ -588,7 +587,6 @@ def update_focus_block(
         if xp_awarded > 0:
             stats.xp += xp_awarded
 
-        # --- DATABASE TRANSACTION ---
         db.commit()
         db.refresh(block)
         if xp_awarded > 0:
