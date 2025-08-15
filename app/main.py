@@ -273,70 +273,50 @@ def create_daily_intention(
     db: Session = Depends(database.get_db)
 ):
     """
-    Create today's Daily Intention, now driven by the service layer.
+    Create today's Daily Intention, using the mock service layer.
     Handles initial submissions and refined submissions after AI feedback.
     """
-    # Check if today's Daily Intention for the currently logged in user already exists
-    existing_intention = crud.get_today_intention(db, current_user.id)
-    if existing_intention:
+    # 1. Check if today's Daily Intention for the currently logged in user already exists
+    if crud.get_today_intention(db, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Daily Intention already exists for today! Get going making progress on it!"
         )
     
-    # --- LOGIC DELEGATION (Call the service) ---
-    process_result = services.create_and_process_intention(
-        db=db, user=current_user, intention_data=intention_data
-    )
+    # 2. Delegate to the mock service layer (with mock AI prompts and logic for this showcase)
+    process_result = services.create_and_process_intention(db, current_user, intention_data)
 
-    # --- RESPONSE HANDLING (Act on the service's result) ---
-    if process_result["needs_refinement"]:
-        # Path 1: The service determined refinement is needed.
-        # Do NOT save to DB. Return the AI feedback for the user to revise.
+    # 3. Handle the result from the mock service
+    if process_result.get("needs_refinement"):
+        # Path 1: The mock service decided refinement is needed. Return the AI feedback
+        # This is a manual construction because the object doesn't exist in the DB.
         return schemas.DailyIntentionRefinementResponse(ai_feedback=process_result["ai_feedback"])
-
     else:
-        # Path 2: The service approved the intention.
-        # Now, we proceed with creating the database record.
+        # Path 2: The mock service approved the intention. Save it to the database
         try:
             db_intention = models.DailyIntention(
                 user_id=current_user.id,
                 daily_intention_text=intention_data.daily_intention_text.strip(),
                 target_quantity=intention_data.target_quantity,
                 focus_block_count=intention_data.focus_block_count,
-                ai_feedback=process_result["ai_feedback"], # Use feedback from the service
+                ai_feedback=process_result.get("ai_feedback"),
             )
             db.add(db_intention)
 
-            # Update stats based on service output
-            stats.clarity += process_result.get("clarity_stat_gain", 0)
+            # Update Clarity stat using our dependency
+            clarity_gain = process_result.get("clarity_stat_gain", 0)
+            if clarity_gain > 0:
+                stats.clarity += clarity_gain
 
             db.commit()
             db.refresh(db_intention)
-            db.refresh(stats)
+            if clarity_gain > 0:
+                db.refresh(stats)
 
-            # Construct the success response
-            return schemas.DailyIntentionResponse(
-                id=db_intention.id,
-                user_id=current_user.id,
-                daily_intention_text=db_intention.daily_intention_text,
-                target_quantity=db_intention.target_quantity,
-                completed_quantity=db_intention.completed_quantity,
-                focus_block_count=db_intention.focus_block_count,
-                completion_percentage=0.0,  # Initial percentage is 0%
-                status=db_intention.status,
-                created_at=db_intention.created_at,
-                ai_feedback=db_intention.ai_feedback, # AI Coach's immediate feedback
-                needs_refinement=False # Excplicitly set to False
-            )
-        
+            return db_intention
         except Exception as e:
-            print(f"Database error: {e}") 
-            db.rollback()  # Roll back on any error
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to create Daily Intention: {str(e)}"
-            )
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Failed to create Daily Intention: {e}")
             
 
 @app.get("/intentions/today/me", response_model=schemas.DailyIntentionResponse)
