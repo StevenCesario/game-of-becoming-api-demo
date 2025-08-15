@@ -224,7 +224,7 @@ def register_user(user_data: schemas.UserCreate, db: Session = Depends(database.
         db.refresh(new_user)
 
         # Return the user 
-        return schemas.UserResponse.model_validate(new_user)
+        return new_user
     
     except Exception as e:
         db.rollback()  # Roll back on any error
@@ -242,8 +242,7 @@ def get_user(current_user: Annotated[models.User, Depends(security.get_current_u
     # 3. It fetched the user from the database.
     # 4. It handled the "user not found" case.
     
-    # Explicitly convert the SQLAlchemy User model to the Pydantic UserResponse model.
-    return schemas.UserResponse.model_validate(current_user)
+    return current_user
 
 @app.get("/users/me/stats", response_model=schemas.CharacterStatsResponse)
 def get_my_character_stats(
@@ -257,19 +256,10 @@ def get_my_character_stats(
     if not stats:
         raise HTTPException(status_code=404, detail="Character stats not found for your account.")
 
-    # Calculate the level on the fly
-    current_level = calculate_level(stats.xp)
-
     # Return a response that includes the calculated level
-    return schemas.CharacterStatsResponse(
-        user_id=stats.user_id,
-        level=current_level, # Use the calculated value here
-        xp=stats.xp,
-        resilience=stats.resilience,
-        clarity=stats.clarity,
-        discipline=stats.discipline,
-        commitment=stats.commitment
-    )
+    response = schemas.CharacterStatsResponse.model_validate(stats)
+    response.level = calculate_level(stats.xp) # Manually add the calculated level value
+    return response
 
 
 # DAILY INTENTIONS ENDPOINTS
@@ -282,7 +272,10 @@ def create_daily_intention(
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
 ):
-    """Create today's Daily Intention, now driven by the service layer."""
+    """
+    Create today's Daily Intention, now driven by the service layer.
+    Handles initial submissions and refined submissions after AI feedback.
+    """
     # Check if today's Daily Intention for the currently logged in user already exists
     existing_intention = crud.get_today_intention(db, current_user.id)
     if existing_intention:
@@ -574,7 +567,7 @@ def create_focus_block(
         db.add(new_block)
         db.commit()
         db.refresh(new_block)
-        return schemas.FocusBlockResponse.model_validate(new_block)
+        return new_block
     except Exception as e:
         print(f"Database error on Focus Block creation: {e}")
         db.rollback()
@@ -634,7 +627,7 @@ def update_focus_block(
         if xp_awarded > 0:
             db.refresh(stats)
             
-        return schemas.FocusBlockResponse.model_validate(block)
+        return block
 
     except Exception as e:
         db.rollback()
@@ -689,8 +682,7 @@ def create_daily_result(
         db.refresh(db_result)
         db.refresh(stats)
 
-        # Return using the simple, elegant, and consistent pattern
-        return schemas.DailyResultResponse.model_validate(db_result)
+        return db_result
     
     except Exception as e:
         print(f"Database error: {e}") 
@@ -710,8 +702,7 @@ def get_daily_result(
     Used for disaplying reflection insights and Recovery Quests
     """
     # The 'result' object is guaranteed to be the correct, owned DailyResult.
-    # All we have to do is convert it to the response model and return it.
-    return schemas.DailyResultResponse.model_validate(result)
+    return result
 
 @app.post("/daily-results/{result_id}/recovery-quest", response_model=schemas.RecoveryQuestResponse)
 def respond_to_recovery_quest(
