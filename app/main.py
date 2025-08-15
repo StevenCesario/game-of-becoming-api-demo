@@ -670,13 +670,10 @@ def respond_to_recovery_quest(
     quest_response: schemas.RecoveryQuestInput,
     result: Annotated[models.DailyResult, Depends(get_owned_daily_result_by_result_id)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
-    current_user: Annotated[models.User, Depends(security.get_current_user)], # Added for the service call
     db: Session = Depends(database.get_db)
 ):
     """Submits user's reflection on a failed day and receives AI coaching via the service layer."""
-    
-    # --- PRE-CONDITION CHECKS ---
-    # The dependency already found the user-owned DailyResult.
+    # The dependency already guarantees user-owned DailyResult.
     
     # Check if Recovery Quest exists; business logic check specific to this endpoint
     if not result.recovery_quest:
@@ -692,26 +689,24 @@ def respond_to_recovery_quest(
             detail="A response for this Recovery Quest has already been submitted."
         )
         
-    # --- LOGIC DELEGATION ---
     try:
-        # 1. DELEGATE: Call the service to get the simulated AI coaching and stat gains
+        # Call the service to get the simulated AI coaching and stat gains
         coaching_data = services.process_recovery_quest_response(
             db=db,
-            user=current_user,
+            user=stats.user,
             result=result,
             response_text=quest_response.recovery_quest_response
         )
 
-        # 2. UPDATE STATE: Apply the user's input and the service's results to the models
+        # Apply the user's input and the service's results to the models
         result.recovery_quest_response = quest_response.recovery_quest_response.strip()
         stats.resilience += coaching_data.get("resilience_stat_gain", 0)
 
-        # 3. COMMIT: Save the changes to the database
         db.commit()
         db.refresh(result)
         db.refresh(stats)
 
-        # 4. RESPOND: Return the data, using the coaching feedback from the service
+        # Return the data, using the coaching feedback from the service
         return schemas.RecoveryQuestResponse(
             recovery_quest_response=result.recovery_quest_response,
             ai_coaching_feedback=coaching_data["ai_coaching_feedback"]
