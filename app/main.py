@@ -606,7 +606,6 @@ def update_focus_block(
 
 @app.post("/daily-results", response_model=schemas.DailyResultResponse, status_code=status.HTTP_201_CREATED)
 def create_daily_result(
-    current_user: Annotated[models.User, Depends(security.get_current_user)],
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)], 
     db: Session = Depends(database.get_db)
@@ -625,9 +624,7 @@ def create_daily_result(
         )
     
     # 1. Call the service to get the logic result
-    reflection_data = services.create_daily_reflection(
-        db=db, user=current_user, daily_intention=daily_intention
-    )
+    reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
     
     try:
         # 2. Use the data from the service to build the DB object
@@ -642,7 +639,6 @@ def create_daily_result(
         # 3. Update stats based on service output
         stats.discipline += reflection_data["discipline_stat_gain"]
 
-        
         db.commit()
         db.refresh(db_result)
         db.refresh(stats)
