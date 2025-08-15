@@ -256,10 +256,17 @@ def get_my_character_stats(
     if not stats:
         raise HTTPException(status_code=404, detail="Character stats not found for your account.")
 
-    # Return a response that includes the calculated level
-    response = schemas.CharacterStatsResponse.model_validate(stats)
-    response.level = calculate_level(stats.xp) # Manually add the calculated level value
-    return response
+    # Because 'level' is a calculated value and doesn't exist on the 'stats' object,
+    # we must manually construct the response to include it. This is the correct pattern.
+    return schemas.CharacterStatsResponse(
+        user_id=stats.user_id,
+        level=calculate_level(stats.xp),  # Use the calculated level value
+        xp=stats.xp,
+        resilience=stats.resilience,
+        clarity=stats.clarity,
+        discipline=stats.discipline,
+        commitment=stats.commitment
+    )
 
 
 # DAILY INTENTIONS ENDPOINTS
