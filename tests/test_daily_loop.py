@@ -10,7 +10,7 @@ def test_creat_daily_intention_unauthenticated_fails(client):
     }
     # No headers are sent with this request
     response = client.post("/intentions", json=payload)
-    assert response.status == 401
+    assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
 
