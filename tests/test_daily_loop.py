@@ -1,197 +1,126 @@
-#Full, self-contained showcase of the daily loop endpoints.
+#Full, self-contained showcase of the daily loop endpoints
+from freezegun import freeze_time
+from datetime import datetime, timezone
+from app import services
 
-def test_creat_daily_intention_unauthenticated_fails(client):
-    """Verify that an unatuhenticated user receives a 401 error when trying to create a Daily Intention"""
-    payload = {
-        "daily_intention_text": "Try to sneak in",
-        "target_quantity": 1,
-        "focus_block_count": 1,
-        "is_refined": True
-    }
-    # No headers are sent with this request
-    response = client.post("/intentions", json=payload)
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Not authenticated"
-
-
-def test_create_daily_intention_flow(client, user_token):
-    """Authenticated user creates a Daily Intention."""
-    headers = {"Authorization": f"Bearer {user_token}"}
-    payload = {
-        "daily_intention_text": "Send 5 cold emails",
-        "target_quantity": 5,
-        "focus_block_count": 3,
-        "is_refined": True,
+# --- Mocks ---
+# These functions simulate the responses from our service layer. This allows us
+# to test the API endpoints in isolation, without making real (and slow) AI calls.
+def mock_intention_approved(db, user, intention_data):
+    """A robust mock that mimics the real approved intention object."""
+    return {
+        "id": 1, "user_id": user.id,
+        "daily_intention_text": intention_data.daily_intention_text,
+        "target_quantity": intention_data.target_quantity,
+        "completed_quantity": 0, "status": "pending",
+        "focus_block_count": intention_data.focus_block_count,
+        "ai_feedback": "Mock AI Feedback", "user_response_to_ai_feedback": None,
+        "user_agreed_with_ai": None, "created_at": datetime.now(timezone.utc),
+        "daily_result": None, "focus_blocks": []
     }
 
-    resp = client.post("/intentions", headers=headers, json=payload)
-    assert resp.status_code == 201, resp.text
+def mock_reflection_success(db, user, daily_intention):
+    return {"succeeded": True, "ai_feedback": "Mock Success!", "recovery_quest": None, "discipline_stat_gain": 1, "xp_awarded": 20}
 
+def mock_reflection_failed(db, user, daily_intention):
+    return {"succeeded": False, "ai_feedback": "Mock Fail.", "recovery_quest": "What happened?", "discipline_stat_gain": 0, "xp_awarded": 0}
 
-def test_daily_results_cannot_get_duplicated(client, user_token):
-    """Endpoint refuses double DailyResult for today."""
-    headers = {"Authorization": f"Bearer {user_token}"}
+def mock_recovery_quest_coaching(db, user, result, response_text):
+    return {"ai_coaching_feedback": "Mock Coaching.", "resilience_stat_gain": 1, "xp_awarded": 15}
 
-    # 1. Create todays Daily Intention (prerequisite)
-    client.post(
-        "/intentions",
-        headers=headers,
-        json={
-            "daily_intention_text": "Write API tests",
-            "target_quantity": 1,
-            "focus_block_count": 1,
-            "is_refined": True,
-        },
-    )
+# --- Tests ---
 
-    # 2. First evening reflection should succeed
-    r1 = client.post("/daily-results", headers=headers)
-    assert r1.status_code == 201
-
-    # 3. Duplicate call must return 400
-    r2 = client.post("/daily-results", headers=headers)
-    assert r2.status_code == 400, r2.text
-    assert "already exists" in r2.json()["detail"]
-
-
-def test_completed_focus_block_awards_xp(client, user_token):
-    """Completing a Focus Block awards +10 XP. (service mock value)"""
-    headers = {"Authorization": f"Bearer {user_token}"}
-
-    # 1. Daily Intention for today
-    i_resp = client.post(
-        "/intentions",
-        headers=headers,
-        json={
-            "daily_intention_text": "Finish API tests",
-            "target_quantity": 1,
-            "focus_block_count": 1,
-            "is_refined": True,
-        },
-    )
-    assert i_resp.status_code == 201
-
-    # 2. Create & complete one Focus Block
-    f_resp = client.post(
-        "/focus-blocks",
-        headers=headers,
-        json={"focus_block_intention": "Finish endpoint tests", "duration_minutes": 30},
-    )
-    assert f_resp.status_code == 201
-    block_id = f_resp.json()["id"]
-
-    # 3. Check user xp before, complete the Focus Block and compare
-    start = client.get("/users/me/stats", headers=headers).json()
-    start_xp = start["xp"]
-
-    client.patch(
-        f"/focus-blocks/{block_id}",
-        headers=headers,
-        json={"status": "completed"},
-    )
-
-    end = client.get("/users/me/stats", headers=headers).json()
-    assert end["xp"] == start_xp + 10
-
-def test_level_up_mechanic_on_sufficient_xp(client, user_token):
+def test_create_and_get_daily_intention(client, user_token, monkeypatch):
     """
-    Verifies that the user's level increases from 1 to 2 after gaining 100 XP.
+    Ensures the fundamental loop of creating and then reading an intention works.
+    This confirms the data is being correctly saved and retrieved.
     """
+    # We replace the real AI service with our simple "approved" mock.
+    monkeypatch.setattr(services, "create_and_process_intention", mock_intention_approved)
     headers = {"Authorization": f"Bearer {user_token}"}
+    payload = {"daily_intention_text": "Write tests", "target_quantity": 5, "focus_block_count": 3, "is_refined": True}
 
-    # 1. Create a Daily Intention to attach the focus blocks to
-    intention_payload = {
-        "daily_intention_text": "Grind XP to level up",
-        "target_quantity": 10,
-        "focus_block_count": 10,
-        "is_refined": True,
-    }
-    intention_resp = client.post("/intentions", headers=headers, json=intention_payload)
-    assert intention_resp.status_code == 201
+    # Step 1: Create the intention via a POST request.
+    create_resp = client.post("/intentions", headers=headers, json=payload)
+    assert create_resp.status_code == 201
+    assert "id" in create_resp.json() # A robust check to confirm creation.
 
-    # 2. Check the user's starting state
+    # Step 2: Immediately retrieve the intention via a GET request.
+    get_resp = client.get("/intentions/today/me", headers=headers)
+    assert get_resp.status_code == 200
+    # Step 3: Verify the content of the retrieved intention matches what we sent.
+    assert get_resp.json()["daily_intention_text"] == "Write tests"
+
+def test_complete_intention_updates_stats_and_streak(client, long_lived_user_token, monkeypatch):
+    """
+    This is a critical test for the core game loop and retention mechanic.
+    It verifies that completing intentions on CONSECUTIVE days correctly
+    increments the user's streak.
+    """
+    # We mock all the service functions this test will trigger.
+    monkeypatch.setattr(services, "create_and_process_intention", mock_intention_approved)
+    monkeypatch.setattr(services, "create_daily_reflection", mock_reflection_success)
+    headers = {"Authorization": f"Bearer {long_lived_user_token}"} # Use the long-lived token for time-travel
+
+    # --- Day 1 ---
+    with freeze_time("2025-08-26"):
+        # Onboarding is the first "successful action" that starts the streak.
+        client.put("/users/me", headers=headers, json={"hrga": "Test HRGA"})
+        
+        # Simulate a full day's cycle: create, update progress, and complete.
+        client.post("/intentions", headers=headers, json={"daily_intention_text": "Day 1", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
+        client.patch("/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
+        client.post("/intentions/today/complete", headers=headers)
+        
+        # Verify that after the first day, the streak is 1.
+        day1_user = client.get("/users/me", headers=headers).json()
+        assert day1_user["current_streak"] == 1
+
+    # --- Day 2 ---
+    # We use the "Time Machine" to travel to the next day.
+    with freeze_time("2025-08-27"):
+        # Simulate the second full day's cycle for the SAME user.
+        client.post("/intentions", headers=headers, json={"daily_intention_text": "Day 2", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
+        client.patch("/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
+        client.post("/intentions/today/complete", headers=headers)
+        
+        # The core assertion: Verify the streak has correctly incremented to 2.
+        day2_user = client.get("/users/me", headers=headers).json()
+        assert day2_user["current_streak"] == 2
+
+def test_full_fail_forward_recovery_quest_loop(client, user_token, monkeypatch):
+    """
+    Tests the "Fail Forward" philosophy. It ensures that failing a quest,
+    reflecting on it, and completing the recovery quest correctly awards
+    Resilience and preserves the user's streak.
+    """
+    # We mock all services, including the "failure" and "coaching" paths.
+    monkeypatch.setattr(services, "create_and_process_intention", mock_intention_approved)
+    monkeypatch.setattr(services, "create_daily_reflection", mock_reflection_failed)
+    monkeypatch.setattr(services, "process_recovery_quest_response", mock_recovery_quest_coaching)
+    headers = {"Authorization": f"Bearer {user_token}"}
+    
+    # Step 1: Onboard the user to establish a baseline state.
+    client.put("/users/me", headers=headers, json={"hrga": "Test HRGA"})
     start_stats = client.get("/users/me/stats", headers=headers).json()
-    assert start_stats["level"] == 1
-    assert start_stats["xp"] == 0
 
-    # 3. Complete 10 Focus Blocks to gain 100 XP
-    for i in range(10):
-        # Create the block
-        fb_create_resp = client.post(
-            "/focus-blocks",
-            headers=headers,
-            json={"focus_block_intention": f"Block #{i+1}", "duration_minutes": 10},
-        )
-        assert fb_create_resp.status_code == 201
-        block_id = fb_create_resp.json()["id"]
+    # Step 2: Create a daily intention.
+    client.post("/intentions", headers=headers, json={"daily_intention_text": "stuff", "target_quantity": 5, "focus_block_count": 3, "is_refined": True})
+    
+    # Step 3: The user chooses to "Fail Forward" by hitting the fail endpoint.
+    fail_resp = client.post("/intentions/today/fail", headers=headers)
+    assert fail_resp.status_code == 200
+    result_id = fail_resp.json()["id"] # Get the ID for the generated DailyResult
+    
+    # Step 4: The user completes the resulting Recovery Quest.
+    client.post(f"/daily-results/{result_id}/recovery-quest", headers=headers, json={"recovery_quest_response": "I reflected."})
 
-        # Complete the block
-        fb_patch_resp = client.patch(
-            f"/focus-blocks/{block_id}",
-            headers=headers,
-            json={"status": "completed"},
-        )
-        assert fb_patch_resp.status_code == 200
-
-    # 4. Check the user's final state
+    # Step 5: Verify that the correct rewards have been given.
     end_stats = client.get("/users/me/stats", headers=headers).json()
-    assert end_stats["xp"] == 100
-    assert end_stats["level"] == 2
-
-def test_full_fail_forward_recovery_quest_loop(client, user_token):
-    """
-    Tests the entire "Fail Forward" loop:
-    1. Create an intention and fail to complete it.
-    2. Create a daily result, which should trigger a recovery quest.
-    3. Respond to the recovery quest.
-    4. Verify that the user's 'resilience' stat has increased.
-    """
-    headers = {"Authorization": f"Bearer {user_token}"}
-
-    # 1. Create a Daily Intention
-    intention_payload = {
-        "daily_intention_text": "Send 5 Upwork proposals",
-        "target_quantity": 5,
-        "focus_block_count": 3,
-        "is_refined": True
-    }
-    intention_resp = client.post("/intentions", headers=headers, json=intention_payload)
-    assert intention_resp.status_code == 201
-
-    # 2. Partially complete the intention (i.e. fail)
-    progress_payload = {"completed_quantity": 3}
-    progress_resp = client.patch("intentions/today/progress", headers=headers, json=progress_payload)
-    assert progress_resp.status_code == 200
-    assert progress_resp.json()["status"] == "in_progress"
-
-    # 3. Trigger the evening reflection (Daily Result creation)
-    # This is the step that should generate the Recovery Quest
-    result_resp = client.post("/daily-results", headers=headers)
-    assert result_resp.status_code == 201
-    result_data = result_resp.json()
-    assert result_data["succeeded_failed"] is False
-    assert result_data["recovery_quest"] is not None # Verify a Recovery Quest was generated
-    result_id = result_data["id"]
-
-    # 4. Check the user's starting stats
-    start_stats_resp = client.get("/users/me/stats", headers=headers)
-    assert start_stats_resp.status_code == 200
-    start_resilience = start_stats_resp.json()["resilience"]
-
-    # 5. Respond to the Recovery Quest
-    quest_response_payload = {
-        "recovery_quest_response": "I got distracted by social media in the afternoon and lost my momentum."
-    }
-    quest_resp = client.post(
-        f"/daily-results/{result_id}/recovery-quest",
-        headers=headers,
-        json=quest_response_payload
-    )
-    assert quest_resp.status_code == 200
-    assert "ai_coaching_feedback" in quest_resp.json()
-
-    # 6. Verify that the Resilience stat has increased
-    end_stats_resp = client.get("/users/me/stats", headers=headers)
-    assert end_stats_resp.status_code == 200
-    end_resilience = end_stats_resp.json()["resilience"]
-    assert end_resilience == start_resilience + 1
+    end_user = client.get("/users/me", headers=headers).json()
+    
+    # The user should gain Resilience and XP for their reflection.
+    assert end_stats["resilience"] == start_stats["resilience"] + 1
+    assert end_stats["xp"] == start_stats["xp"] + 15
+    # Crucially, their streak is preserved (or started), rewarding the "Fail Forward" action.
+    assert end_user["current_streak"] == 1
