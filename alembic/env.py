@@ -7,11 +7,10 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# ADD THESE THREE LINES: This is the magic to find your models.py file
-# and import your Base object from it.
+# The magic that allows Alembic to find our models.py file
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
-from models import Base
-
+from app.models import Base
+from app.database import DATABASE_URL
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -21,6 +20,9 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Set the database URL from our app's configuration
+config.set_main_option('sqlalchemy.url', DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
