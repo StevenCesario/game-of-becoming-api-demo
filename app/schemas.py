@@ -29,7 +29,6 @@ class UserBase(BaseModel):
     """Base schema for User"""
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
-    hrga: str = Field(..., min_length=1, max_length=8000) # Reasonable cap
 
     @field_validator('name', 'hrga')
     def validate_text_fields(cls, v):
@@ -51,9 +50,9 @@ class UserCreate(UserBase):
     
     
 class UserUpdate(UserBase):
-    """Schema for updating User information"""
-    # Inherits all fields from UserBase
-    pass
+    """Schema for updating a user's profile, e.g., during onboarding."""
+    # We only allow updating the hrga for now, but could add name, etc., later.
+    hrga: str = Field(..., min_length=10, max_length=8000)
     
 
 class UserResponse(BaseModel):
@@ -61,7 +60,9 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: str
-    hrga: str
+    hrga: Optional[str]
+    current_streak: int
+    longest_streak: int
     registered_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -136,28 +137,6 @@ class DailyIntentionRefinementResponse(BaseModel):
     ai_feedback: str
 
 
-# MODIFIED: Original response schema
-class DailyIntentionResponse(BaseModel):
-    """Unified response for all successful/existing Daily Intention endpoints"""
-    id: int
-    user_id: int
-    daily_intention_text: str
-    target_quantity: int
-    completed_quantity: int
-    focus_block_count: int
-    completion_percentage: float
-    status: str # 'pending', 'in_progress', 'completed', 'failed'
-    created_at: datetime
-    ai_feedback: Optional[str] = None # AI coach's immediate feedback. Can be null if Claude API fails
-    needs_refinement: bool = False # New. Always False for an approved intention (doesn't need refinement)
-
-    model_config = ConfigDict(from_attributes=True) # Allows model to be created from ORM attributes
-
-
-# NEW: Tells the creation endpoint what its possible responses are
-DailyIntentionCreateResponse = Union[DailyIntentionRefinementResponse, DailyIntentionResponse]
-
-
 # =============================================================================
 # FOCUS BLOCK SCHEMAS
 # =============================================================================
@@ -180,6 +159,9 @@ class FocusBlockResponse(FocusBlockBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class FocusBlockCompletionResponse(FocusBlockResponse): # Specialized schema for completion of Focus Blocks
+    xp_awarded: int = 0
 
 class FocusBlockUpdate(BaseModel):
     """Schema for updating a Focus Block, e.g., with video URLs."""
@@ -216,6 +198,10 @@ class DailyResultResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class DailyResultCompletionResponse(DailyResultResponse): # Specialized schema for completion of Daily Intentions
+    xp_awarded: int = 0
+    discipline_stat_gain: int = 0
+
 
 class RecoveryQuestInput(BaseModel):
     """Schema for user's Recovery Quest response input"""
@@ -234,3 +220,27 @@ class RecoveryQuestResponse(BaseModel):
     """Schema for the complete Recovery Quest response (includes AI feedback)"""
     recovery_quest_response: str
     ai_coaching_feedback: str  # AI generates this
+
+
+# MODIFIED: Original response schema
+class DailyIntentionResponse(BaseModel):
+    """Unified response for all successful/existing Daily Intention endpoints"""
+    id: int
+    user_id: int
+    daily_intention_text: str
+    target_quantity: int
+    completed_quantity: int
+    focus_block_count: int
+    completion_percentage: float
+    status: str # 'pending', 'in_progress', 'completed', 'failed'
+    created_at: datetime
+    ai_feedback: Optional[str] = None # AI coach's immediate feedback. Can be null if Claude API fails
+    needs_refinement: bool = False # New. Always False for an approved intention (doesn't need refinement)
+    focus_blocks: list[FocusBlockResponse] = []
+    daily_result: Optional[DailyResultCompletionResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Tells the creation endpoint what its possible responses are
+DailyIntentionCreateResponse = Union[DailyIntentionRefinementResponse, DailyIntentionResponse]
