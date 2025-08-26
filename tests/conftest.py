@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from app.main import app
 from app.database import get_db
 from app.models import Base
+from app import security # Import for monkeypatching
 
 # --- Test Database Setup ---
 # Use an in-memory SQLite database for testing
@@ -73,3 +74,20 @@ def user_token(client):
     assert login.status_code == 200, f"login failed: {login.json()}"
 
     return login.json()["access_token"]   # now guaranteed to exist
+
+@pytest.fixture(scope="function")
+def long_lived_user_token(client, monkeypatch):
+    """
+    Creates a user and returns an access token with a long (48-hour)
+    lifespan, specifically for tests that involve time travel.
+    """
+    # Temporarily change the app's token lifespan setting to 2 days (2880 minutes)
+    monkeypatch.setattr(security, "ACCESS_TOKEN_EXPIRE_MINUTES", 2880)
+
+    client.post("/register", json={"name": "TimeTraveler", "email": "traveler@example.com", "password": "pass123123123"})
+    
+    login = client.post("/login", data={"username": "traveler@example.com", "password": "pass123123123"})
+    
+    # Pytest automatically cleans up the monkeypatch after this test,
+    # so our real app setting is not affected.
+    return login.json()["access_token"]
