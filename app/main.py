@@ -9,20 +9,17 @@ from typing import Annotated
 from dotenv import load_dotenv
 import math
 
-# ---- Internal package imports (namespaced) ----
-import app.crud as crud
-import app.database as database
-import app.security as security
-import app.services as services
-import app.utils as utils
-import app.models as models
-import app.schemas as schemas
+# --- Internal package imports (namespaced) ---
+from . import crud
+from . import database
+from . import security
+from . import services
+from . import utils
+from . import models
+from . import schemas
 
 # Load environment variables
 load_dotenv()
-
-# Password hashing setup
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # FastAPI app setup
 app = FastAPI(
@@ -39,7 +36,7 @@ def calculate_level(xp: int) -> int:
         return 1
     return math.floor((xp / 100) ** 0.5) + 1
 
-# ---------- ENDPOINT DEPENDENCIES ----------
+# --- ENDPOINT DEPENDENCIES ---
 
 def get_current_user_daily_intention(
     # This dependency itself depends on our other dependencies
@@ -143,7 +140,7 @@ def get_owned_daily_result_by_result_id(
     
     return result
 
-# ---------- GENERAL ENDPOINTS ----------
+# --- GENERAL ENDPOINTS ---
 
 @app.get("/")
 def read_root():
@@ -197,7 +194,7 @@ def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-# USER ENDPOINTS
+# --- USER & ONBOARDING ENDPOINTS ---
 
 # Simplified using create_user in crud.py
 @app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
@@ -244,6 +241,20 @@ def get_user(current_user: Annotated[models.User, Depends(security.get_current_u
     
     return current_user
 
+@app.put("/users/me", response_model=schemas.UserResponse)
+def update_user_me(user_data: schemas.UserUpdate, current_user: Annotated[models.User, Depends(security.get_current_user)], db: Session = Depends(database.get_db)):
+    """The new onboarding endpoint."""
+    try:
+        current_user.hrga = user_data.hrga
+        # This is the "ignition" that starts the streak at 1.
+        services.update_user_streak(user=current_user)
+        db.commit()
+        db.refresh(current_user)
+        return current_user
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to update user profile: {str(e)}")
+
 @app.get("/users/me/stats", response_model=schemas.CharacterStatsResponse)
 def get_my_character_stats(
     current_user: Annotated[models.User, Depends(security.get_current_user)]
@@ -269,7 +280,7 @@ def get_my_character_stats(
     )
 
 
-# DAILY INTENTIONS ENDPOINTS
+# --- DAILY INTENTION & EXECUTION LOOP ENDPOINTS ---
 
 # Updated for Smart Detection!
 @app.post("/intentions", response_model=schemas.DailyIntentionCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -340,7 +351,7 @@ def get_my_daily_intention(
         if intention.target_quantity > 0 else 0.0
     )
 
-    # 2. Because we have a calculated value, we MUST manually construct the Pydantic response model. 
+    # 2. Because we have a calculated value, we must manually construct the Pydantic response model. 
     return schemas.DailyIntentionResponse(
         id=intention.id,
         user_id=intention.user_id,
@@ -412,39 +423,87 @@ def update_daily_intention_progress(
             detail=f"Failed to update Daily Intention progress: {str(e)}"
         )
     
-@app.patch("/intentions/today/complete", response_model=schemas.DailyIntentionResponse)
+# --- ATOMIC END-OF-DAY ENDPOINTS ---
+@app.post("/intentions/today/complete", response_model=schemas.DailyIntentionResponse)
 def complete_daily_intention(
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
     ):
     """
-    Mark today's Daily Intention for the currently logged in user as completed
+    Marks the Daily Intention as completed AND creates the corresponding Daily Result
+    in a single, atomic operation.
     
     This triggers:
     - XP gain for the user
     - Discipline stat increase
-    - Streak continuation
+    - Streak continuation; now implemented!
     """
     # The dependency guarantees Daily Intention that belongs to the currently logged in user
+
+    if daily_intention.daily_result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A result for this intention has already been created."
+        )
+    
+    # Ensure the intention is actually ready to be completed
+    if daily_intention.completed_quantity < daily_intention.target_quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Intention progress is not yet complete."
+        )
     
     try:
         # Mark as completed
         daily_intention.status = 'completed'
         daily_intention.completed_quantity = daily_intention.target_quantity  # Ensure full completion
 
-        db.commit()
-        db.refresh(daily_intention)
+        # Call the service to get the reflection logic, Discipline stat gain and XP gain
+        reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
+        discipline_gain = reflection_data.get("discipline_stat_gain", 0)
+        xp_gain = reflection_data.get("xp_awarded", 0)
 
-        return schemas.DailyIntentionResponse(
-            id=daily_intention.id,
-            user_id=daily_intention.user_id,
-            daily_intention_text=daily_intention.daily_intention_text,
-            target_quantity=daily_intention.target_quantity,
-            completed_quantity=daily_intention.completed_quantity,
-            focus_block_count=daily_intention.focus_block_count,
-            completion_percentage=100.0,  # Fully completed
-            status=daily_intention.status,
-            created_at=daily_intention.created_at
+        # Create the DailyResult
+        db_result = models.DailyResult(
+            daily_intention_id=daily_intention.id,
+            succeeded_failed=True, # Explicitly True
+            ai_feedback=reflection_data["ai_feedback"],
+            recovery_quest=None, # No recovery quest on success
+            discipline_stat_gain=discipline_gain,
+            xp_awarded=xp_gain # Save the XP gain to the database
+        )
+        db.add(db_result)
+
+        # Update stats with BOTH rewards
+        if discipline_gain > 0:
+            stats.discipline += discipline_gain
+        if xp_gain > 0:
+            stats.xp += xp_gain
+
+        # NEW: Streak implementation! This is a confirmed "successful action"
+        services.update_user_streak(user=stats.user)
+
+        # Explicitly add the user object to the session to ensure its changes are tracked 
+        db.add(stats.user)
+
+        # Commit all changes at once
+        db.commit()
+        db.refresh(db_result)
+        db.refresh(stats)
+
+        # Manually construct the final, rich response object
+        return schemas.DailyResultCompletionResponse(
+            id=db_result.id,
+            daily_intention_id=db_result.daily_intention_id,
+            succeeded_failed=db_result.succeeded_failed,
+            ai_feedback=db_result.ai_feedback,
+            recovery_quest=db_result.recovery_quest,
+            recovery_quest_response=db_result.recovery_quest_response,
+            user_confirmation_correction=db_result.user_confirmation_correction,
+            created_at=db_result.created_at,
+            discipline_stat_gain=discipline_gain, # Use the calculated value
+            xp_awarded=xp_gain # Use the calculated value
         )
     
     except Exception as e:
@@ -455,44 +514,73 @@ def complete_daily_intention(
             detail=f"Failed to complete Daily Intention: {str(e)}"
         )
     
-@app.patch("/intentions/today/fail", response_model=schemas.DailyIntentionResponse)
+@app.post("/intentions/today/fail", response_model=schemas.DailyResultCompletionResponse)
 def fail_daily_intention(
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
     ):
     """
-    Mark today's Daily Intention for the currently logged in user as failed
+    Triggers the "Fail Forward" mechanism by marking the Daily Intention as
+    failed AND creating the corresponding Daily Result in a single, atomic operation.
     
-    This triggers the "Fail Forward" mechanism!
     - AI feedback on failure in order to re-frame failure
     - AI generates and initiates Recovery Quest
     - Opportunity to gain Resilience stat
     """
     # The dependency once again guarantees Daily Intention that belongs to the currently logged in user
+    # But we still need to check if the Daily Intention already has a Daily Result
+    if daily_intention.daily_result:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A Daily Result for this Daily Intention has alreayd been created."
+        )
     
     try:
         # Mark as failed
         daily_intention.status = 'failed'
-        
-        db.commit()
-        db.refresh(daily_intention)
 
-        # Calculate the final completion percentage
-        completion_percentage = (
-            (daily_intention.completed_quantity / daily_intention.target_quantity) * 100
-            if daily_intention.target_quantity > 0 else 0.0
+        # --- Start of new, integrated logic ---
+
+        # 1. Call the service to get the reflection logic
+        reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
+        discipline_gain = reflection_data.get("discipline_stat_gain", 0) # Should be 0 for failure
+        xp_gain = reflection_data.get("xp_awarded", 0) # Should also be 0 for failure
+
+        # 2. Create the DailyResult database objcet
+        db_result = models.DailyResult(
+            daily_intention_id=daily_intention.id,
+            succeeded_failed=False, # Explicitly False for failure
+            ai_feedback=reflection_data["ai_feedback"],
+            recovery_quest=reflection_data["recovery_quest"],
+            discipline_stat_gain=discipline_gain,
+            xp_awarded=xp_gain
         )
+        db.add(db_result)
 
-        return schemas.DailyIntentionResponse(
-            id=daily_intention.id,
-            user_id=daily_intention.user_id,
-            daily_intention_text=daily_intention.daily_intention_text,
-            target_quantity=daily_intention.target_quantity,
-            completed_quantity=daily_intention.completed_quantity,
-            focus_block_count=daily_intention.focus_block_count,
-            completion_percentage=completion_percentage,  # Use the calculated percentage at the time of failure
-            status=daily_intention.status,
-            created_at=daily_intention.created_at
+        # 3. Update user stats (Discipline and XP shouldn't change, but this is good practice)
+        if discipline_gain > 0:
+            stats.discipline += discipline_gain
+        if xp_gain > 0:
+            stats.xp += xp_gain
+        
+        # Commit all changes at once (status change and new result)
+        db.commit()
+        db.refresh(db_result)
+        db.refresh(stats)
+
+        # Manually construct the final, rich response object
+        return schemas.DailyResultCompletionResponse(
+            id=db_result.id,
+            daily_intention_id=db_result.daily_intention_id,
+            succeeded_failed=db_result.succeeded_failed,
+            ai_feedback=db_result.ai_feedback,
+            recovery_quest=db_result.recovery_quest,
+            recovery_quest_response=db_result.recovery_quest_response,
+            user_confirmation_correction=db_result.user_confirmation_correction,
+            created_at=db_result.created_at,
+            discipline_stat_gain=discipline_gain, # Use the calculated value, despite it being 0
+            xp_awarded=0 # Use the calculated value, despite it being 0
         )
     
     except Exception as e:
@@ -503,8 +591,7 @@ def fail_daily_intention(
             detail=f"Failed to mark Daily Intention as failed: {str(e)}"
         )
     
-# FOCUS BLOCK ENDPOINTS
-
+# --- FOCUS BLOCK & RECOVERY QUEST ENDPOINTS ---
 @app.post("/focus-blocks", response_model=schemas.FocusBlockResponse, status_code=status.HTTP_201_CREATED)
 def create_focus_block(
     block_data: schemas.FocusBlockCreate, 
@@ -609,56 +696,8 @@ def update_focus_block(
         )
 
 
-# DAILY RESULTS ENDPOINTS
-
-@app.post("/daily-results", response_model=schemas.DailyResultResponse, status_code=status.HTTP_201_CREATED)
-def create_daily_result(
-    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
-    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)], 
-    db: Session = Depends(database.get_db)
-):
-    """Creates the evening Daily Result and triggers reflection via the service layer."""
-    # The get_current_user_daily_intention dependency guarantees a Daily Intention from the currently logged in user
-    
-    # Check if Daily Result already exists for this intention
-    existing_result = db.query(models.DailyResult).filter(
-        models.DailyResult.daily_intention_id == daily_intention.id
-    ).first()
-    if existing_result:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Daily Result already exists for this intention. Sacred finality!"
-        )
-    
-    # 1. Call the service to get the logic result
-    reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
-    
-    try:
-        # 2. Use the data from the service to build the DB object
-        db_result = models.DailyResult(
-            daily_intention_id=daily_intention.id,
-            succeeded_failed=reflection_data["succeeded"],
-            ai_feedback=reflection_data["ai_feedback"],
-            recovery_quest=reflection_data["recovery_quest"]
-        )
-        db.add(db_result)
-
-        # 3. Update stats based on service output
-        stats.discipline += reflection_data["discipline_stat_gain"]
-
-        db.commit()
-        db.refresh(db_result)
-        db.refresh(stats)
-
-        return db_result
-    
-    except Exception as e:
-        print(f"Database error: {e}") 
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create Daily Result: {str(e)}"
-        )
+# The old POST Daily Result creation endpoint /daily-results is no longer needed; 
+# it is all taken care of by the /complete and /fail endpoints!
     
 @app.get("/daily-results/{intention_id}", response_model=schemas.DailyResultResponse)
 def get_daily_result(
@@ -704,19 +743,34 @@ def respond_to_recovery_quest(
             result=result,
             response_text=quest_response.recovery_quest_response
         )
+        resilience_gain = coaching_data.get("resilience_stat_gain", 0)
+        xp_awarded = coaching_data.get("xp_awarded", 0)
 
         # Apply the user's input and the service's results to the models
         result.recovery_quest_response = quest_response.recovery_quest_response.strip()
-        stats.resilience += coaching_data.get("resilience_stat_gain", 0)
+        result.xp_awarded = xp_awarded
+        if resilience_gain > 0:
+            stats.resilience += resilience_gain
+        if xp_awarded > 0:
+            stats.xp += xp_awarded
+        
+        # The user has successfully learned from failure. This is a "successful action",
+        # so we call the Streak Guardian to preserve their streak.
+        services.update_user_streak(user=stats.user)
 
         db.commit()
         db.refresh(result)
-        db.refresh(stats)
+        if resilience_gain > 0:
+            db.refresh(stats)
+        if xp_awarded > 0:
+            db.refresh(stats)
 
         # Return the data, using the coaching feedback from the service
         return schemas.RecoveryQuestResponse(
             recovery_quest_response=result.recovery_quest_response,
-            ai_coaching_feedback=coaching_data["ai_coaching_feedback"]
+            ai_coaching_feedback=coaching_data["ai_coaching_feedback"],
+            resilience_stat_gain=resilience_gain,
+            xp_awarded=xp_awarded
         )
     
     except Exception as e:
