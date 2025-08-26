@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from datetime import datetime, date, timezone
 import random
 
 import app.models as models
@@ -22,6 +23,42 @@ In the private production repository, these functions contain:
 - Logic for dynamic content generation based on user history.
 ======================================================================
 """
+
+# --- GAME MECHANICS ---
+# This dictionary defines the core reward structure
+XP_REWARDS = {
+    'focus_block_completed': 10,
+    'daily_intention_completed': 20,
+    'recovery_quest_completed': 15,
+}
+
+# --- STREAK LOGIC ---
+# This function is a core piece of the application's retention strategy and
+# a great example of testable, standalone business logic.
+def update_user_streak(user: models.User, today: date = date.today()):
+    """
+    The "Streak Guardian." Contains the core logic for updating a user's streak,
+    following the "one grace day" rule.
+    """
+    if user.last_streak_update and user.last_streak_update.date() >= today:
+        return False # Streak already updated today
+
+    days_since_last_update = float('inf')
+    if user.last_streak_update:
+        days_since_last_update = (today - user.last_streak_update.date()).days
+
+    if days_since_last_update == 1:
+        user.current_streak += 1 # Continue streak
+    elif days_since_last_update > 1 or days_since_last_update == float('inf'):
+        user.current_streak = 1 # Reset or start streak
+
+    if user.current_streak > user.longest_streak:
+        user.longest_streak = user.current_streak
+
+    user.last_streak_update = datetime.now(timezone.utc)
+    return True
+
+# --- MOCKED AI INTERACTIONS ---
 
 def create_and_process_intention(
     db: Session, user: models.User, intention_data: schemas.DailyIntentionCreate
@@ -60,12 +97,7 @@ def complete_focus_block(db: Session, user: models.User, block: models.FocusBloc
     SIMULATES awarding XP for completing a Focus Block.
     """
     print(f"--- SIMULATING XP GAIN FOR FOCUS BLOCK {block.id} ---")
-    mock_xp_awarded = 10
-    
-    return {
-        "xp_awarded": mock_xp_awarded,
-        "message": f"Simulated awarding of {mock_xp_awarded} XP."
-    }
+    return {"xp_awarded": XP_REWARDS['focus_block_completed']}
 
 
 def create_daily_reflection(
@@ -87,7 +119,8 @@ def create_daily_reflection(
             "succeeded": True,
             "ai_feedback": "Mock Success Feedback: Great job completing your goal! Consistency is key.",
             "recovery_quest": None,
-            "discipline_stat_gain": 1
+            "discipline_stat_gain": 1,
+            "xp_awarded": XP_REWARDS['daily_intention_completed']
         }
     else: # Failed
         completion_rate = (
@@ -98,7 +131,8 @@ def create_daily_reflection(
             "succeeded": False,
             "ai_feedback": f"Mock Failure Feedback: You achieved {completion_rate:.1f}%. Let's reflect on this.",
             "recovery_quest": "Mock Recovery Quest: What was the primary obstacle you faced today?",
-            "discipline_stat_gain": 0
+            "discipline_stat_gain": 0,
+            "xp_awarded": 0
         }
 
 
@@ -113,6 +147,7 @@ def process_recovery_quest_response(
     
     return {
         "ai_coaching_feedback": "Mock Coaching: That's a valuable insight. Acknowledging the obstacle is the first step to overcoming it. You've earned Resilience for this reflection.",
-        "resilience_stat_gain": 1
+        "resilience_stat_gain": 1,
+        "xp_awarded": XP_REWARDS['recovery_quest_completed']
     }
 
