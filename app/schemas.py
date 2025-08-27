@@ -49,7 +49,7 @@ class UserCreate(UserBase):
         return v
     
     
-class UserUpdate(UserBase):
+class UserUpdate(BaseModel):
     """Schema for updating a user's profile, e.g., during onboarding."""
     # We only allow updating the hrga for now, but could add name, etc., later.
     hrga: str = Field(..., min_length=10, max_length=8000)
