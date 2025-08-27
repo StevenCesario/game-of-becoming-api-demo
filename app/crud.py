@@ -11,7 +11,7 @@ def create_user(db: Session, user_data: schemas.UserCreate) -> models.User:
     new_user = models.User(
         name=user_data.name.strip(),
         email=user_data.email.strip(),
-        hrga=user_data.hrga.strip()
+        # 'hrga' omitted as it is now nullable
     )
     db.add(new_user)
     db.flush() # Assigns ID without committing
