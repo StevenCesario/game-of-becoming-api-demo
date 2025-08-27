@@ -75,7 +75,7 @@ class DailyIntention(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), index=True) # Index for quick retrieval of daily intentions
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="daily_intention")
+    user: Mapped["User"] = relationship(back_populates="daily_intentions")
     daily_result: Mapped["DailyResult"] = relationship(back_populates="daily_intention") # One-to-one relationship with DailyResult
     focus_blocks: Mapped[List["FocusBlock"]] = relationship(back_populates="daily_intention") #For individual focus block tracking
 
