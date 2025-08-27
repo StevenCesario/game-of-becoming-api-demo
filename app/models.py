@@ -76,7 +76,7 @@ class DailyIntention(Base):
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="daily_intention")
-    daily_results: Mapped["DailyResult"] = relationship(back_populates="daily_intention") # One-to-one relationship with DailyResult
+    daily_result: Mapped["DailyResult"] = relationship(back_populates="daily_intention") # One-to-one relationship with DailyResult
     focus_blocks: Mapped[List["FocusBlock"]] = relationship(back_populates="daily_intention") #For individual focus block tracking
 
 class FocusBlock(Base):
