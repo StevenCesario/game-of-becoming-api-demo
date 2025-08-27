@@ -7,16 +7,11 @@ from app import services
 # These functions simulate the responses from our service layer. This allows us
 # to test the API endpoints in isolation, without making real (and slow) AI calls.
 def mock_intention_approved(db, user, intention_data):
-    """A robust mock that mimics the real approved intention object."""
+    """A mock that simulates the service layer approving an intention."""
     return {
-        "id": 1, "user_id": user.id,
-        "daily_intention_text": intention_data.daily_intention_text,
-        "target_quantity": intention_data.target_quantity,
-        "completed_quantity": 0, "status": "pending",
-        "focus_block_count": intention_data.focus_block_count,
-        "ai_feedback": "Mock AI Feedback", "user_response_to_ai_feedback": None,
-        "user_agreed_with_ai": None, "created_at": datetime.now(timezone.utc),
-        "daily_result": None, "focus_blocks": []
+        "needs_refinement": False,
+        "ai_feedback": "Mock AI Feedback: Approved!",
+        "clarity_stat_gain": 1
     }
 
 def mock_reflection_success(db, user, daily_intention):

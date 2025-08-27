@@ -424,7 +424,7 @@ def update_daily_intention_progress(
         )
     
 # --- ATOMIC END-OF-DAY ENDPOINTS ---
-@app.post("/intentions/today/complete", response_model=schemas.DailyIntentionResponse)
+@app.post("/intentions/today/complete", response_model=schemas.DailyResultCompletionResponse)
 def complete_daily_intention(
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
