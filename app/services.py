@@ -52,7 +52,8 @@ def update_user_streak(user: models.User, today: date = date.today()):
     elif days_since_last_update > 1 or days_since_last_update == float('inf'):
         user.current_streak = 1 # Reset or start streak
 
-    if user.current_streak > user.longest_streak:
+    # This now handles the edge case where longest_streak might not be initialized on a new object
+    if user.longest_streak is None or user.current_streak > user.longest_streak:
         user.longest_streak = user.current_streak
 
     user.last_streak_update = datetime.now(timezone.utc)
