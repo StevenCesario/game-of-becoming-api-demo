@@ -331,7 +331,26 @@ def create_daily_intention(
             if clarity_gain > 0:
                 db.refresh(stats)
 
-            return db_intention
+            completion_percentage = (
+                (db_intention.completed_quantity / db_intention.target_quantity) * 100
+                if db_intention.target_quantity > 0 else 0.0
+            )
+
+            # Manually constructed return statement with the calculated value
+            return schemas.DailyIntentionResponse(
+                id=db_intention.id,
+                user_id=db_intention.user_id,
+                daily_intention_text=db_intention.daily_intention_text,
+                target_quantity=db_intention.target_quantity,
+                completed_quantity=db_intention.completed_quantity,
+                focus_block_count=db_intention.focus_block_count,
+                completion_percentage=completion_percentage, # Use the calculated value
+                status=db_intention.status,
+                created_at=db_intention.created_at,
+                ai_feedback=db_intention.ai_feedback,
+                focus_blocks=[], # Return empty list for a new intention
+                daily_result=None
+            )
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Failed to create Daily Intention: {e}")
