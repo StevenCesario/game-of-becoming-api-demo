@@ -53,6 +53,13 @@ class UserUpdate(BaseModel):
     """Schema for updating a user's profile, e.g., during onboarding."""
     # We only allow updating the hrga for now, but could add name, etc., later.
     hrga: str = Field(..., min_length=10, max_length=8000)
+
+    @field_validator('hrga')
+    def validate_hrga(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("HRGA cannot be empty.")
+        return v
     
 
 class UserResponse(BaseModel):
