@@ -30,7 +30,7 @@ class UserBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
 
-    @field_validator('name', 'hrga')
+    @field_validator('name')
     def validate_text_fields(cls, v):
         v = v.strip()
         if not v:
