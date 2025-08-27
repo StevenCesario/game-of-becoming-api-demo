@@ -1,6 +1,6 @@
 # 🎮 Codename: The Game of Becoming
 
-A robust FastAPI backend that transforms personal development and goal achievement into an engaging, stat-based role-playing game. This project is currently in active development, and "The Game of Becoming" serves as its working title.
+A robust FastAPI backend that transforms personal development and goal achievement into an engaging, stat-based role-playing game.
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal)](https://fastapi.tiangolo.com)
@@ -17,39 +17,40 @@ This system is designed to break that cycle.
 
 ## ✨ The Solution: Gamify Your Growth
 
-This API provides the backend foundation for an application that reframes personal and business growth as an engaging role-playing game. By applying the same proven game mechanics we were addicted to in our youth, it creates a powerful, intrinsic motivation loop.
+This API provides the backend foundation for an application that reframes personal and business growth as an engaging role-playing game. By applying proven game mechanics, it creates a powerful, intrinsic motivation loop.
 
 * **Problem:** It's hard to stay consistent when progress feels invisible.
-* **Solution:** Frame daily actions as **Quests**, focused work as **Execution Sprints**, and personal growth as **Leveling Up**. Provide tangible, visible feedback (XP, Character Stats) for every action taken, turning failure into a learning opportunity and success into a rewarding experience.
+* **Solution:** Frame daily actions as **Quests**, focused work as **Execution Sprints**, and personal growth as **Leveling Up**. Provide tangible, visible feedback (XP, Character Stats, and a daily **Streak**) for every action taken, turning failure into a learning opportunity and success into a rewarding experience.
 
 ## 🔑 Key Features & Technical Highlights
 
 ⚡️ **Modern & Robust Backend**
 * Built with **FastAPI** for high-performance, async-ready API endpoints.
 * **SQLAlchemy 2.0** for a fully type-annotated, modern ORM experience.
-* **Pydantic V2** for rigorous data validation, serialization, and clear API contracts.
+* **Pydantic V2** for rigorous data validation and clear API contracts.
 * **Alembic** for safe and reliable database schema migrations.
 
 🛡️ **Secure & Scalable Architecture**
 * **Secure User Authentication** with JWT for stateless, secure sessions.
 * **Clean Architecture** with a clear separation of concerns (API endpoints, business logic `services`, data access `crud`, and database `models`).
+* **Atomic Endpoints** for critical state changes (e.g., completing a quest), ensuring data integrity across multiple database tables in a single transaction.
 * **Dependency Injection** used throughout for maintainable and testable code.
-* **Eager Loading** (`joinedload`) implemented for efficient database queries, solving the N+1 problem.
 
 🎮 **Engaging Game Mechanics**
+* **The Daily Streak:** A core retention mechanic that rewards daily consistency, with a forgiving "grace day" rule to encourage users after a setback.
 * **Character Progression:** Users earn XP and level up core stats like `Clarity`, `Discipline`, and `Resilience` by completing their goals.
-* **Daily Intentions:** A core game loop where users set a single, measurable goal for the day.
-* **Focus Blocks:** Timed execution sprints to "chunk down" the daily intention and make progress.
-* **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain `Resilience` XP.
+* **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain `Resilience` and, crucially, preserve the user's streak.
+* **Decoupled Onboarding Flow:** A two-step user registration and onboarding process for a smoother user experience.
 
 🤖 **AI-Ready Service Layer**
-* A "hollowed-out" service layer demonstrates how to cleanly integrate with external AI providers (like Anthropic Claude) for intelligent feedback and coaching, without coupling the core application to a specific vendor.
-* The **Provider Factory** (`llm_providers/factory.py`) makes the system extensible and pluggable, allowing for new AI services (e.g., OpenAI, Gemini) to be added with minimal code changes, without affecting the core application logic.
+* A "hollowed-out" service layer demonstrates how to cleanly integrate with external AI providers for intelligent feedback, without coupling the core application to a specific vendor.
+* The **Provider Factory** (`llm_providers/factory.py`) makes the system extensible and pluggable for future AI services.
 
 ✅ **Fully Tested & Automated**
-* Comprehensive integration test suite using **Pytest**.
+* Comprehensive integration and unit test suite using **Pytest**.
+* **Time-Travel Testing** with `freezegun` to reliably test time-sensitive logic like the daily streak mechanic.
 * Separate in-memory test database ensures tests are isolated and fast.
-* **GitHub Actions CI/CD pipeline** automatically runs tests on every push to `main`, ensuring code quality and reliability.
+* **GitHub Actions CI/CD pipeline** automatically runs tests on every push.
 
 ## 🏗️ System Architecture
 ```text
