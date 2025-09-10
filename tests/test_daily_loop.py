@@ -6,7 +6,7 @@ from app import services
 # --- Mocks ---
 # These functions simulate the responses from our service layer. This allows us
 # to test the API endpoints in isolation, without making real (and slow) AI calls.
-def mock_intention_approved(db, user, intention_data):
+async def mock_intention_approved(db, user, intention_data):
     """A mock that simulates the service layer approving an intention."""
     return {
         "needs_refinement": False,
@@ -14,13 +14,13 @@ def mock_intention_approved(db, user, intention_data):
         "clarity_stat_gain": 1
     }
 
-def mock_reflection_success(db, user, daily_intention):
+async def mock_reflection_success(db, user, daily_intention):
     return {"succeeded": True, "ai_feedback": "Mock Success!", "recovery_quest": None, "discipline_stat_gain": 1, "xp_awarded": 20}
 
-def mock_reflection_failed(db, user, daily_intention):
+async def mock_reflection_failed(db, user, daily_intention):
     return {"succeeded": False, "ai_feedback": "Mock Fail.", "recovery_quest": "What happened?", "discipline_stat_gain": 0, "xp_awarded": 0}
 
-def mock_recovery_quest_coaching(db, user, result, response_text):
+async def mock_recovery_quest_coaching(db, user, result, response_text):
     return {"ai_coaching_feedback": "Mock Coaching.", "resilience_stat_gain": 1, "xp_awarded": 15}
 
 # --- Tests ---
@@ -60,7 +60,7 @@ def test_complete_intention_updates_stats_and_streak(client, long_lived_user_tok
     # --- Day 1 ---
     with freeze_time("2025-08-26"):
         # Onboarding is the first "successful action" that starts the streak.
-        client.put("/users/me", headers=headers, json={"hrga": "Test HRGA"})
+        client.put("/users/me", headers=headers, json={"hla": "Test HLA"})
         
         # Simulate a full day's cycle: create, update progress, and complete.
         client.post("/intentions", headers=headers, json={"daily_intention_text": "Day 1", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
@@ -96,7 +96,7 @@ def test_full_fail_forward_recovery_quest_loop(client, user_token, monkeypatch):
     headers = {"Authorization": f"Bearer {user_token}"}
     
     # Step 1: Onboard the user to establish a baseline state.
-    client.put("/users/me", headers=headers, json={"hrga": "Test HRGA"})
+    client.put("/users/me", headers=headers, json={"hla": "Test HLA"})
     start_stats = client.get("/users/me/stats", headers=headers).json()
 
     # Step 2: Create a daily intention.

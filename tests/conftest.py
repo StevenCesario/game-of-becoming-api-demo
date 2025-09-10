@@ -63,7 +63,7 @@ def client(db_session):
 def user_token(client):
     payload = {
         "name": "Demo", "email": "demo@example.com",
-        "hrga": "LinkedIn Outreach", "password": "pass123123123"
+        "hla": "LinkedIn Outreach", "password": "pass123123123"
     }
     r = client.post("/register", json=payload)
     assert r.status_code == 201, f"registration failed: {r.json()}"

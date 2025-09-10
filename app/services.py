@@ -60,11 +60,12 @@ class RecoveryQuestCoachingResponse(BaseModel):
 
 # --- SERVICE FUNCTIONS (BUSINESS LOGIC LAYER) ---
 
-def update_user_streak(user: models.User, today: date = date.today()):
+def update_user_streak(user: models.User):
     """
     The "Streak Guardian." Contains the core logic for updating a user's streak,
     following the "one grace day" rule.
     """
+    today = date.today() # Get the date when the function is actually called
     if user.last_streak_update and user.last_streak_update.date() >= today:
         return False
 
