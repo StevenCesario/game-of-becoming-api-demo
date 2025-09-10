@@ -379,7 +379,7 @@ async def handle_chat_message(
 # --- DAILY INTENTION & EXECUTION LOOP ENDPOINTS ---
 
 # Updated for Smart Detection! And now async!
-@app.post("/intentions", response_model=schemas.DailyIntentionCreateResponse, status_code=status.HTTP_200_OK) # No longer 201_CREATED!
+@app.post("/intentions", response_model=schemas.IntentionCreationResponse, status_code=status.HTTP_200_OK) # No longer 201_CREATED!
 async def create_daily_intention(
     intention_data: schemas.DailyIntentionCreate,
     current_user: Annotated[models.User, Depends(security.get_current_user)],
@@ -603,7 +603,7 @@ async def fail_daily_intention(
         discipline_gain = reflection_data.get("discipline_stat_gain", 0) # Should be 0 for failure
         xp_gain = reflection_data.get("xp_awarded", 0) # Should also be 0 for failure
 
-        # 2. Create the DailyResult database objcet
+        # 2. Create the DailyResult database object
         db_result = models.DailyResult(
             daily_intention_id=daily_intention.id,
             succeeded_failed=False, # Explicitly False for failure
