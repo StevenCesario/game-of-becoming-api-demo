@@ -21,3 +21,15 @@ class BaseLLMProvider(ABC):
         that conforms to that model's structure.
         """
         pass
+
+    # NEW: A simpler method for plain text generation
+    @abstractmethod
+    async def generate_text_response(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> str:
+        """
+        Takes prompts and returns a single string of text as a response
+        """
+        pass
