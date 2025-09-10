@@ -1,8 +1,18 @@
 from __future__ import annotations # Keep ForwardRef happy with annotation-handling
 from typing import List, Optional
 from datetime import datetime, timezone
-from sqlalchemy import (String, Text, ForeignKey)
-from sqlalchemy.orm import (DeclarativeBase, Mapped, mapped_column, relationship)
+
+from sqlalchemy import (
+    String, 
+    Text, 
+    ForeignKey
+)
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship
+)
 
 # Define a new Base class using DeclarativeBase
 class Base(DeclarativeBase):
@@ -15,14 +25,19 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100)) # Nullable is False by default
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    hrga: Mapped[str] = mapped_column(Text, nullable=True) # Highest Revenue Generated Activity. Unlimited text field - let users be as comprehensive as they wish. Nullable since it will be null on registration but set during onboarding
+    hla: Mapped[Optional[str]] = mapped_column(Text) # Highest Leverage Activity. Unlimited text field - let users be as comprehensive as they wish
     default_focus_block_duration: Mapped[int] = mapped_column(default=50) # In minutes
     registered_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
-    # --- NEW: Streak-related fields ---
+    # --- NEW: Onboarding fields ---
+    vision: Mapped[Optional[str]] = mapped_column(Text) # The North Star
+    milestone: Mapped[Optional[str]] = mapped_column(Text) # The 90-day milestone
+    constraint: Mapped[Optional[str]] = mapped_column(Text) # The "Boss" obstacle
+
+    # --- Streak-related fields --- 
     current_streak: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
     longest_streak: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
-    last_streak_update: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    last_streak_update: Mapped[Optional[datetime]] = mapped_column()
 
     # Relationships
     daily_intentions: Mapped[List["DailyIntention"]] = relationship(back_populates="user")
@@ -105,8 +120,8 @@ class DailyResult(Base):
     daily_intention_id: Mapped[int] = mapped_column(ForeignKey("daily_intentions.id"))
     succeeded_failed: Mapped[bool] = mapped_column()
     ai_feedback: Mapped[Optional[str]] = mapped_column(Text)
-    xp_awarded: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
-    discipline_stat_gain: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
+    xp_awarded: Mapped[int] = mapped_column(default=0)
+    discipline_stat_gain: Mapped[int] = mapped_column(default=0)
     user_confirmation_correction: Mapped[Optional[bool]] = mapped_column() # User can confirm or correct AI feedback. True is confirmation, False is correction
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 

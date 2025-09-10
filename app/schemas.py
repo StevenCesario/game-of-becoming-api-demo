@@ -1,6 +1,9 @@
-from pydantic import BaseModel, field_validator, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, field_validator, Field, EmailStr, ConfigDict, computed_field
 from typing import Optional, Union
 from datetime import datetime
+from enum import Enum
+import math
+
 
 # =============================================================================
 # SECURITY SCHEMAS
@@ -29,8 +32,9 @@ class UserBase(BaseModel):
     """Base schema for User"""
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
+    hla: Optional[str] = Field(None, min_length=1, max_length=8000) # Reasonable cap. Can be None at registration, not after onboarding!
 
-    @field_validator('name')
+    @field_validator('name') # Validator doesn't validate hla anymore
     def validate_text_fields(cls, v):
         v = v.strip()
         if not v:
@@ -51,14 +55,14 @@ class UserCreate(UserBase):
     
 class UserUpdate(BaseModel):
     """Schema for updating a user's profile, e.g., during onboarding."""
-    # We only allow updating the hrga for now, but could add name, etc., later.
-    hrga: str = Field(..., min_length=10, max_length=8000)
+    # We only allow updating the hla for now, but could add name, etc., later.
+    hla: str = Field(..., min_length=10, max_length=8000)
 
-    @field_validator('hrga')
-    def validate_hrga(cls, v):
+    @field_validator('hla')
+    def validate_hla(cls, v):
         v = v.strip()
         if not v:
-            raise ValueError("HRGA cannot be empty.")
+            raise ValueError("HLA cannot be empty.")
         return v
     
 
@@ -67,16 +71,21 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: str
-    hrga: Optional[str]
+    hla: Optional[str]
     current_streak: int
     longest_streak: int
     registered_at: datetime
+
+    # New Onboarding fields
+    vision: Optional[str]
+    milestone: Optional[str]
+    constraint: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
 
 class CharacterStatsResponse(BaseModel):
     user_id: int
-    level: int # The calculated level
+    # level: int, xp_for_next_level: int, and xp_needed_to_level: int are now all computed fields!
     xp: int
     resilience: int
     clarity: int
@@ -84,6 +93,45 @@ class CharacterStatsResponse(BaseModel):
     commitment: int
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def level(self) -> int:
+        """Calculate the user level based on total XP"""
+        if self.xp < 0: return 1
+        # The formula for level is the inverse of the XP formula: L = floor(sqrt(XP/100)) + 1
+        return math.floor((self.xp / 100) ** 0.5) + 1
+    
+    @computed_field
+    @property
+    def xp_for_next_level(self) -> int:
+        """Calculates the total XP required to reach the next level."""
+        # The formula for total XP to reach a level is 100 * (L-1)^2
+        next_level = self.level + 1
+        return 100 * (next_level - 1) ** 2
+
+    @computed_field
+    @property
+    def xp_needed_to_level(self) -> int:
+        """Calculates the XP needed to get to the next level."""
+        return self.xp_for_next_level - self.xp
+
+
+# =============================================================================
+# ONBOARDING SCHEMAS
+# =============================================================================
+
+class OnboardingStepInput(BaseModel):
+    """Input from the user for a given onboarding step."""
+    step: str = Field(..., description="The current step being completed, e.g., 'vision', 'milestone', 'constraint', 'hla'")
+    text: str = Field(..., min_length=5, max_length=2000)
+
+class OnboardingStepResponse(BaseModel):
+    """The AI Coach's response, guiding the user to the next step."""
+    ai_response: str
+    next_step: Optional[str] = Field(None, description="The name of the next step, e.g., 'milestone'. Null if onboarding is complete.")
+    # This will hold the final, AI-refined HLA at the end of the process
+    final_hla: Optional[str] = None
 
 
 # =============================================================================
@@ -95,7 +143,7 @@ class DailyIntentionCreate(BaseModel):
     daily_intention_text: str
     target_quantity: int
     focus_block_count: int 
-    is_refined: bool = False # NEW: Flag to indicate a refine submission. Defaults to False
+    is_refined: bool = False # Flag to indicate need for clarity refinement. Defaults to False
 
     @field_validator('daily_intention_text')
     def validate_daily_intention_text(cls, v):
@@ -137,11 +185,12 @@ class DailyIntentionUpdate(BaseModel):
         return v
 
 
-# NEW: This is the response when the AI says the intention needs refinement
-class DailyIntentionRefinementResponse(BaseModel):
-    """Response when an intention needs refinement by the user"""
-    needs_refinement: bool = True # Defaults to True
-    ai_feedback: str
+# # NEW: This is the response when the AI says the intention needs refinement
+# class DailyIntentionRefinementResponse(BaseModel):
+#     """Response when an intention needs refinement by the user"""
+#     needs_refinement: bool = True # Defaults to True
+#     ai_feedback: str
+# Obsolete, no longer used
 
 
 # =============================================================================
@@ -167,14 +216,15 @@ class FocusBlockResponse(FocusBlockBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-class FocusBlockCompletionResponse(FocusBlockResponse): # Specialized schema for completion of Focus Blocks
-    xp_awarded: int = 0
-
 class FocusBlockUpdate(BaseModel):
     """Schema for updating a Focus Block, e.g., with video URLs."""
     pre_block_video_url: Optional[str] = None
     post_block_video_url: Optional[str] = None
     status: Optional[str] = None # To mark as 'completed' later
+
+class FocusBlockCompletionResponse(FocusBlockResponse):
+    """Specific response for when a Focus Block is completed, including the XP awarded."""
+    xp_awarded: int = 0
 
 
 # =============================================================================
@@ -205,7 +255,11 @@ class DailyResultResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class DailyResultCompletionResponse(DailyResultResponse): # Specialized schema for completion of Daily Intentions
+class DailyResultCompletionResponse(DailyResultResponse):
+    """
+    Specific response for when a Daily Intention is completed or failed, including the XP 
+    awarded and stat gain.
+    """
     xp_awarded: int = 0
     discipline_stat_gain: int = 0
 
@@ -227,9 +281,13 @@ class RecoveryQuestResponse(BaseModel):
     """Schema for the complete Recovery Quest response (includes AI feedback)"""
     recovery_quest_response: str
     ai_coaching_feedback: str  # AI generates this
+    resilience_stat_gain: int = 0
+    xp_awarded: int = 0
 
 
-# MODIFIED: Original response schema
+# DailyIntentionResponse is down here since it contain both Focus Blocks and potentially a Daily Result
+# MODIFIED: Now includes Focus Blocks for a more RESTful approach
+# MODIFIED: Now *also* includes an optional DailyResult
 class DailyIntentionResponse(BaseModel):
     """Unified response for all successful/existing Daily Intention endpoints"""
     id: int
@@ -238,16 +296,86 @@ class DailyIntentionResponse(BaseModel):
     target_quantity: int
     completed_quantity: int
     focus_block_count: int
-    completion_percentage: float
+    # completion_percentage: float is removed and replaced with a computed_field!
     status: str # 'pending', 'in_progress', 'completed', 'failed'
     created_at: datetime
     ai_feedback: Optional[str] = None # AI coach's immediate feedback. Can be null if Claude API fails
     needs_refinement: bool = False # New. Always False for an approved intention (doesn't need refinement)
-    focus_blocks: list[FocusBlockResponse] = []
+    
+    focus_blocks: list[FocusBlockResponse] = [] # It tells Pydantic to expect a list of objects that match the FocusBlockResponse schema
     daily_result: Optional[DailyResultCompletionResponse] = None
+
+    model_config = ConfigDict(from_attributes=True) # Allows model to be created from ORM attributes
+
+    @computed_field
+    @property
+    def completion_percentage(self) -> float:
+        """Calculates the completion percentage for the intention."""
+        if self.target_quantity == 0:
+            return 0.0
+        return (self.completed_quantity / self.target_quantity) * 100
+
+# # Tells the creation endpoint what its possible responses are
+# DailyIntentionCreateResponse = Union[DailyIntentionRefinementResponse, DailyIntentionResponse]
+# Obsolete, no longer used
+
+
+# =============================================================================
+# GAME STATE SCHEMA
+# =============================================================================
+
+class GameStateResponse(BaseModel):
+    """
+    The comprehensive state of the user's game, returned on login
+    or app start. The single source of truth for the frontend
+    """
+    user: UserResponse
+    stats: CharacterStatsResponse
+    todays_intention: Optional[DailyIntentionResponse] = None
+    unresolved_intention: Optional[DailyIntentionResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-# Tells the creation endpoint what its possible responses are
-DailyIntentionCreateResponse = Union[DailyIntentionRefinementResponse, DailyIntentionResponse]
+# =============================================================================
+# AI CHAT SCHEMAS
+# =============================================================================
+
+class ChatMessageInput(BaseModel):
+    """Schema for the user's input message to the AI chat."""
+    text: str = Field(..., min_length=1, max_length=4000)
+
+class ChatMessageResponse(BaseModel):
+    """Schema for the AI's response in the chat."""
+    ai_response: str
+
+
+# =============================================================================
+# CONVERSATIONAL DAILY INTENTION CREATION SCHEMAS
+# =============================================================================
+
+class CreationStep(str, Enum):
+    """Defines the possible steps in the conversational creation process."""
+    AWAITING_TEXT = "AWAITING_TEXT"
+    AWAITING_REFINEMENT = "AWAITING_REFINEMENT"
+    # We will add these in the next iteration to keep the flow manageable
+    # AWAITING_QUANTITY = "AWAITING_QUANTITY"
+    # AWAITING_BLOCKS = "AWAITING_BLOCKS"
+    COMPLETE = "COMPLETE"
+
+class IntentionCreationRequest(BaseModel):
+    """The frontend sends this to the backend with each message during creation."""
+    user_text: str = Field(..., min_length=1)
+    # The frontend must tell the backend what step of the conversation it thinks it's on.
+    current_step: CreationStep
+    
+    # We'll use these fields in subsequent steps. For now, they can be optional.
+    target_quantity: Optional[int] = None
+    focus_block_count: Optional[int] = None
+
+class IntentionCreationResponse(BaseModel):
+    """The backend sends this back, telling the frontend exactly what to do next."""
+    next_step: CreationStep
+    ai_message: str
+    # The final, completed intention object will only be sent when the conversation is complete.
+    intention_payload: Optional[DailyIntentionResponse] = None
