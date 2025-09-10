@@ -25,7 +25,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('hrga', sa.Text(), nullable=False),
+    sa.Column('hla', sa.Text(), nullable=False),
     sa.Column('default_focus_block_duration', sa.Integer(), nullable=False),
     sa.Column('registered_at', sa.DateTime(), nullable=False),
     sa.PrimaryKeyConstraint('id')
