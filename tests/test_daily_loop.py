@@ -52,7 +52,7 @@ def test_create_and_get_daily_intention(client, user_token, monkeypatch):
     # Step 1: Create the intention via a POST request.
     create_resp = client.post("/api/intentions", headers=headers, json=payload)
     assert create_resp.status_code == 200 # The endpoint exptects 200 now, not 201
-    assert "id" in create_resp.json() # A robust check to confirm creation.
+    assert "id" in create_resp.json()["intention_payload"] # Check for 'id' within the nested payload
 
     # Step 2: Immediately retrieve the intention via a GET request.
     get_resp = client.get("/api/intentions/today/me", headers=headers)
@@ -122,7 +122,7 @@ def test_full_fail_forward_recovery_quest_loop(client, user_token, monkeypatch):
     result_id = fail_resp.json()["id"] # Get the ID for the generated DailyResult
     
     # Step 4: The user completes the resulting Recovery Quest.
-    client.post(f"/daily-results/{result_id}/recovery-quest", headers=headers, json={"recovery_quest_response": "I reflected."})
+    client.post(f"/api/daily-results/{result_id}/recovery-quest", headers=headers, json={"recovery_quest_response": "I reflected."})
 
     # Step 5: Verify that the correct rewards have been given.
     end_stats = client.get("/users/me/stats", headers=headers).json()
