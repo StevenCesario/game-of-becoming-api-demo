@@ -27,7 +27,7 @@ This API provides the backend foundation for an application that reframes person
 ⚡️ **Modern & Robust Backend**
 * Built with **FastAPI** for high-performance, async-ready API endpoints.
 * **SQLAlchemy 2.0** for a fully type-annotated, modern ORM experience.
-* **Pydantic V2** for rigorous data validation and clear API contracts.
+* **Pydantic V2** for rigorous data validation, clear API contracts, and declarative, computed_field responses.
 * **Alembic** for safe and reliable database schema migrations.
 
 🛡️ **Secure & Scalable Architecture**
@@ -35,16 +35,17 @@ This API provides the backend foundation for an application that reframes person
 * **Clean Architecture** with a clear separation of concerns (API endpoints, business logic `services`, data access `crud`, and database `models`).
 * **Atomic Endpoints** for critical state changes (e.g., completing a quest), ensuring data integrity across multiple database tables in a single transaction.
 * **Dependency Injection** used throughout for maintainable and testable code.
+* **Declarative State Endpoint** (/game-state) providing a single source of truth for the frontend client on load.
 
 🎮 **Engaging Game Mechanics**
 * **The Daily Streak:** A core retention mechanic that rewards daily consistency, with a forgiving "grace day" rule to encourage users after a setback.
 * **Character Progression:** Users earn XP and level up core stats like `Clarity`, `Discipline`, and `Resilience` by completing their goals.
 * **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain `Resilience` and, crucially, preserve the user's streak.
-* **Decoupled Onboarding Flow:** A two-step user registration and onboarding process for a smoother user experience.
 
-🤖 **AI-Ready Service Layer**
-* A "hollowed-out" service layer demonstrates how to cleanly integrate with external AI providers for intelligent feedback, without coupling the core application to a specific vendor.
-* The **Provider Factory** (`llm_providers/factory.py`) makes the system extensible and pluggable for future AI services.
+🤖 **Conversational AI Core**
+* **Conversational Onboarding Flow** (/onboarding/step) that guides users to define their core vision and goals through a multi-step dialogue with an AI Clarity coach.
+* **Stateful Conversational API** for creating Daily Intentions, demonstrating how to manage a multi-step dialogue with a user via a state machine pattern.
+* **Provider Factory** (llm_providers/factory.py) makes the system extensible and pluggable for different AI services, cleanly decoupling the application from a specific vendor.
 
 ✅ **Fully Tested & Automated**
 * Comprehensive integration and unit test suite using **Pytest**.
