@@ -50,12 +50,12 @@ def test_create_and_get_daily_intention(client, user_token, monkeypatch):
     payload = {"daily_intention_text": "Write tests", "target_quantity": 5, "focus_block_count": 3, "is_refined": True}
 
     # Step 1: Create the intention via a POST request.
-    create_resp = client.post("/intentions", headers=headers, json=payload)
-    assert create_resp.status_code == 201
+    create_resp = client.post("/api/intentions", headers=headers, json=payload)
+    assert create_resp.status_code == 200 # The endpoint exptects 200 now, not 201
     assert "id" in create_resp.json() # A robust check to confirm creation.
 
     # Step 2: Immediately retrieve the intention via a GET request.
-    get_resp = client.get("/intentions/today/me", headers=headers)
+    get_resp = client.get("/api/intentions/today/me", headers=headers)
     assert get_resp.status_code == 200
     # Step 3: Verify the content of the retrieved intention matches what we sent.
     assert get_resp.json()["daily_intention_text"] == "Write tests"
@@ -77,9 +77,9 @@ def test_complete_intention_updates_stats_and_streak(client, long_lived_user_tok
         client.put("/users/me", headers=headers, json={"hla": "Test HLA"})
         
         # Simulate a full day's cycle: create, update progress, and complete.
-        client.post("/intentions", headers=headers, json={"daily_intention_text": "Day 1", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
-        client.patch("/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
-        client.post("/intentions/today/complete", headers=headers)
+        client.post("/api/intentions", headers=headers, json={"daily_intention_text": "Day 1", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
+        client.patch("/api/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
+        client.post("/api/intentions/today/complete", headers=headers)
         
         # Verify that after the first day, the streak is 1.
         day1_user = client.get("/users/me", headers=headers).json()
@@ -89,9 +89,9 @@ def test_complete_intention_updates_stats_and_streak(client, long_lived_user_tok
     # We use the "Time Machine" to travel to the next day.
     with freeze_time("2025-08-27"):
         # Simulate the second full day's cycle for the SAME user.
-        client.post("/intentions", headers=headers, json={"daily_intention_text": "Day 2", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
-        client.patch("/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
-        client.post("/intentions/today/complete", headers=headers)
+        client.post("/api/intentions", headers=headers, json={"daily_intention_text": "Day 2", "target_quantity": 1, "focus_block_count": 1, "is_refined": True})
+        client.patch("/api/intentions/today/progress", headers=headers, json={"completed_quantity": 1})
+        client.post("/api/intentions/today/complete", headers=headers)
         
         # The core assertion: Verify the streak has correctly incremented to 2.
         day2_user = client.get("/users/me", headers=headers).json()
@@ -114,10 +114,10 @@ def test_full_fail_forward_recovery_quest_loop(client, user_token, monkeypatch):
     start_stats = client.get("/users/me/stats", headers=headers).json()
 
     # Step 2: Create a daily intention.
-    client.post("/intentions", headers=headers, json={"daily_intention_text": "stuff", "target_quantity": 5, "focus_block_count": 3, "is_refined": True})
+    client.post("/api/intentions", headers=headers, json={"daily_intention_text": "stuff", "target_quantity": 5, "focus_block_count": 3, "is_refined": True})
     
     # Step 3: The user chooses to "Fail Forward" by hitting the fail endpoint.
-    fail_resp = client.post("/intentions/today/fail", headers=headers)
+    fail_resp = client.post("/api/intentions/today/fail", headers=headers)
     assert fail_resp.status_code == 200
     result_id = fail_resp.json()["id"] # Get the ID for the generated DailyResult
     
