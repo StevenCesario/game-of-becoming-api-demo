@@ -1,154 +1,178 @@
+from typing import Optional
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 from datetime import datetime, date, timezone
-import random
+import os, asyncio
 
-import app.models as models
-import app.schemas as schemas
+from . import models
+from . import schemas
 
 """
 ======================================================================
-SERVICE LAYER (PUBLIC DEMO)
+SERVICE LAYER (PUBLIC DEMO V2)
 ======================================================================
 This file contains the business logic for the application.
 
 NOTE FOR REVIEWERS:
 For this public demonstration repository, the complex business logic
 and proprietary AI prompt engineering have been "hollowed-out". 
-The functions in this service layer simulate the expected outcomes 
-without revealing the core intellectual property of the application.
-
-In the private production repository, these functions contain:
-- Detailed game mechanic calculations (XP, stat gains, etc.).
-- Complex, multi-step prompt chains for the Anthropic API.
-- Logic for dynamic content generation based on user history.
+The functions in this service layer simulate the expected outcomes by
+returning structured Pydantic models, mirroring the production app's
+architecture without revealing the core intellectual property.
 ======================================================================
 """
 
 # --- GAME MECHANICS ---
-# This dictionary defines the core reward structure
 XP_REWARDS = {
     'focus_block_completed': 10,
     'daily_intention_completed': 20,
     'recovery_quest_completed': 15,
 }
 
-# --- STREAK LOGIC ---
-# This function is a core piece of the application's retention strategy and
-# a great example of testable, standalone business logic.
+def _calculate_xp_with_streak_bonus(base_xp: int, current_streak: int) -> int:
+    """
+    Calculates the final XP to be awarded by applying a streak bonus.
+    This is the single source of truth for the streak multiplier formula.
+    """
+    if current_streak <= 0:
+        return base_xp
+    
+    streak_bonus_multiplier = 1 + (current_streak * 0.01)
+    xp_to_award = round(base_xp * streak_bonus_multiplier)
+    return xp_to_award
+
+# --- STRUCTURED AI RESPONSE MODELS (FOR DEMONSTRATION) ---
+
+class IntentionAnalysisResponse(BaseModel):
+    is_strong_intention: bool = Field(description="True if the intention is clear, specific, and ready for commitment. False if it needs refinement.")
+    feedback: str = Field(description="Encouraging, actionable coaching feedback for the user (2-3 sentences max).")
+    clarity_stat_gain: int = Field(description="Set to 1 if is_strong_intention is true, otherwise 0.")
+
+class DailyReflectionResponse(BaseModel):
+    ai_feedback: str = Field(description="AI coach's feedback on the user's day.")
+    recovery_quest: Optional[str] = Field(description="A specific recovery quest if the day was a failure. Null if successful.")
+    discipline_stat_gain: int = Field(description="Discipline stat points to award (1 for success, 0 for failure).")
+
+class RecoveryQuestCoachingResponse(BaseModel):
+    ai_coaching_feedback: str = Field(description="Encouraging, wisdom-building coaching based on the user's reflection.")
+    resilience_stat_gain: int = Field(description="Set to 1 for completing the reflection.")
+
+
+# --- SERVICE FUNCTIONS (BUSINESS LOGIC LAYER) ---
+
 def update_user_streak(user: models.User, today: date = date.today()):
     """
     The "Streak Guardian." Contains the core logic for updating a user's streak,
     following the "one grace day" rule.
     """
     if user.last_streak_update and user.last_streak_update.date() >= today:
-        return False # Streak already updated today
+        return False
 
     days_since_last_update = float('inf')
     if user.last_streak_update:
         days_since_last_update = (today - user.last_streak_update.date()).days
 
     if days_since_last_update == 1:
-        user.current_streak += 1 # Continue streak
+        user.current_streak += 1
     elif days_since_last_update > 1 or days_since_last_update == float('inf'):
-        user.current_streak = 1 # Reset or start streak
+        user.current_streak = 1
 
-    # This now handles the edge case where longest_streak might not be initialized on a new object
     if user.longest_streak is None or user.current_streak > user.longest_streak:
         user.longest_streak = user.current_streak
 
     user.last_streak_update = datetime.now(timezone.utc)
     return True
 
-# --- MOCKED AI INTERACTIONS ---
-
-def create_and_process_intention(
-    db: Session, user: models.User, intention_data: schemas.DailyIntentionCreate
-) -> dict:
+async def create_and_process_intention(db: Session, user: models.User, intention_data: schemas.DailyIntentionCreate) -> dict:
     """
-    SIMULATES analyzing a new Daily Intention.
-
-    In the production app, this calls the AI to analyze the Daily Intention 
-    against the user's HRGA and determines if it needs refinement. For this demo, 
-    it randomly decides whether to approve it or ask for refinement to showcase
-    both application flows.
+    SIMULATES analyzing a new Daily Intention using the production app's architecture.
     """
-    print("--- SIMULATING DAILY INTENTION ANALYSIS ---")
-    
-    # Showcase both paths: if it's the first submission, randomly ask for refinement.
-    # If it's a refined submission, always approve.
-    if not intention_data.is_refined and random.choice([True, False]):
-        print("--- SIMULATION: Intention needs refinement. ---")
+    # This pattern allows for testing the full application flow without making real AI calls.
+    if os.getenv("DISABLE_AI_CALLS") == "True":
+        print("--- AI CALL DISABLED: Returning mock 'APPROVED' response. ---")
         return {
-            "needs_refinement": True,
-            "ai_feedback": "Mock Feedback: This is a good start, but could you be more specific? For example, instead of 'work on business', try 'send 5 cold outreach emails'."
+            "needs_refinement": False,
+            "ai_feedback": "Mock Feedback: This is a clear and actionable intention!",
+            "clarity_stat_gain": 1
         }
-
-    print("--- SIMULATION: DAILY Intention approved. Creating in database. ---")
-    # In the real app, stats would be modified here. We simulate that.
-    # The actual db commit will happen in the endpoint.
+    
+    # In production, this section contains a detailed multi-step prompt
+    # that calls an LLM provider and returns a validated Pydantic model.
+    print("--- SIMULATING PRODUCTION AI CALL FOR INTENTION ANALYSIS ---")
+    await asyncio.sleep(1) # Simulate network latency
+    
+    # This mock response simulates the AI approving the intention.
+    mock_analysis = IntentionAnalysisResponse(
+        is_strong_intention=True,
+        feedback="This is a clear, specific, and actionable intention. Let's get to work!",
+        clarity_stat_gain=1
+    )
+    
     return {
-        "needs_refinement": False,
-        "ai_feedback": "Mock Feedback: This is a clear and actionable intention. Approved!",
-        "clarity_stat_gain": 1 # The endpoint will use this to update the model
+        "needs_refinement": not mock_analysis.is_strong_intention,
+        "ai_feedback": mock_analysis.feedback,
+        "clarity_stat_gain": mock_analysis.clarity_stat_gain,
     }
-
 
 def complete_focus_block(db: Session, user: models.User, block: models.FocusBlock) -> dict:
     """
-    SIMULATES awarding XP for completing a Focus Block.
+    Awards XP for a completed Focus Block using the central rulebook and streak multiplier.
     """
-    print(f"--- SIMULATING XP GAIN FOR FOCUS BLOCK {block.id} ---")
-    return {"xp_awarded": XP_REWARDS['focus_block_completed']}
+    base_xp = XP_REWARDS.get('focus_block_completed', 0)
+    xp_to_award = _calculate_xp_with_streak_bonus(base_xp, user.current_streak)
+    return {"xp_awarded": xp_to_award}
 
-
-def create_daily_reflection(
-    db: Session, user: models.User, daily_intention: models.DailyIntention
-) -> dict:
+async def create_daily_reflection(db: Session, user: models.User, daily_intention: models.DailyIntention) -> dict:
     """
-    SIMULATES the evening reflection process.
-
-    Checks if the day was a success or failure and returns mock AI feedback
-    and a mock Recovery Quest if needed. In production, this involves calls
-    to different AI endpoints based on the outcome.
+    SIMULATES generating the end-of-day reflection.
     """
-    print("--- SIMULATING DAILY REFLECTION AND FEEDBACK GENERATION ---")
-    
-    succeeded = daily_intention.status == 'completed'
-    
+    succeeded = daily_intention.status == "completed"
+    xp_to_award = 0
     if succeeded:
-        return {
-            "succeeded": True,
-            "ai_feedback": "Mock Success Feedback: Great job completing your goal! Consistency is key.",
-            "recovery_quest": None,
-            "discipline_stat_gain": 1,
-            "xp_awarded": XP_REWARDS['daily_intention_completed']
-        }
-    else: # Failed
-        completion_rate = (
-            (daily_intention.completed_quantity / daily_intention.target_quantity) * 100
-            if daily_intention.target_quantity > 0 else 0
-        )
-        return {
-            "succeeded": False,
-            "ai_feedback": f"Mock Failure Feedback: You achieved {completion_rate:.1f}%. Let's reflect on this.",
-            "recovery_quest": "Mock Recovery Quest: What was the primary obstacle you faced today?",
-            "discipline_stat_gain": 0,
-            "xp_awarded": 0
-        }
+        base_xp = XP_REWARDS.get('daily_intention_completed', 0)
+        xp_to_award = _calculate_xp_with_streak_bonus(base_xp, user.current_streak)
 
+    if os.getenv("DISABLE_AI_CALLS") == "True":
+        print("--- AI CALL DISABLED: Returning mock reflection. ---")
+        if succeeded:
+            return {"succeeded": True, "ai_feedback": "Mock Success: Great job!", "recovery_quest": None, "discipline_stat_gain": 1, "xp_awarded": xp_to_award}
+        else:
+            return {"succeeded": False, "ai_feedback": "Mock Fail: Let's reflect.", "recovery_quest": "What was the main obstacle?", "discipline_stat_gain": 0, "xp_awarded": 0}
 
-def process_recovery_quest_response(
-    db: Session, user: models.User, result: models.DailyResult, response_text: str
-) -> dict:
-    """
-    SIMULATES providing AI coaching after a user reflects on a failed day,
-    re-wiring how the user thinks about failure.
-    """
-    print("--- SIMULATING AI COACHING FOR RECOVERY QUEST ---")
+    # In production, this contains a prompt that generates a structured response.
+    print("--- SIMULATING PRODUCTION AI CALL FOR DAILY REFLECTION ---")
+    await asyncio.sleep(1)
+
+    mock_reflection = DailyReflectionResponse(
+        ai_feedback="Outstanding execution! Completing your intention directly fuels your goal. This is how momentum is built.",
+        recovery_quest=None,
+        discipline_stat_gain=1
+    )
     
-    return {
-        "ai_coaching_feedback": "Mock Coaching: That's a valuable insight. Acknowledging the obstacle is the first step to overcoming it. You've earned Resilience for this reflection.",
-        "resilience_stat_gain": 1,
-        "xp_awarded": XP_REWARDS['recovery_quest_completed']
-    }
+    response = mock_reflection.model_dump()
+    response["succeeded"] = succeeded
+    response["xp_awarded"] = xp_to_award
+    return response
 
+async def process_recovery_quest_response(db: Session, user: models.User, result: models.DailyResult, response_text: str) -> dict:
+    """
+    SIMULATES providing AI coaching for a Recovery Quest.
+    """
+    base_xp = XP_REWARDS.get('recovery_quest_completed', 0)
+    xp_to_award = _calculate_xp_with_streak_bonus(base_xp, user.current_streak)
+
+    if os.getenv("DISABLE_AI_CALLS") == "True":
+        print("--- AI CALL DISABLED: Returning mock coaching. ---")
+        return {"ai_coaching_feedback": "Mock Coaching: That's a great insight.", "resilience_stat_gain": 1, "xp_awarded": xp_to_award}
+
+    print("--- SIMULATING PRODUCTION AI CALL FOR RECOVERY QUEST COACHING ---")
+    await asyncio.sleep(1)
+
+    mock_coaching = RecoveryQuestCoachingResponse(
+        ai_coaching_feedback="That's a powerful insight. Recognizing the trigger is the first step to managing it. This awareness is how you build resilience.",
+        resilience_stat_gain=1
+    )
+    
+    response = mock_coaching.model_dump()
+    response["xp_awarded"] = xp_to_award
+    return response
