@@ -2,12 +2,11 @@ from __future__ import annotations  # keep ForwardRef happy with annotation-hand
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 from datetime import datetime, timezone
 from typing import Annotated
 from dotenv import load_dotenv
-import math
 
 # --- Internal package imports (namespaced) ---
 from . import crud
@@ -23,18 +22,34 @@ load_dotenv()
 
 # FastAPI app setup
 app = FastAPI(
-    title="Game of Becoming API",
-    description="Gamify your business growth with AI-driven daily intentions and feedback.",
-    version="1.0.0",
+    title="Game of Becoming API (Public Demo)",
+    description="A demonstration of the backend architecture for a gamified productivity application.",
+    version="2.0.0",
     docs_url="/docs"
 )
 
-# Utility functions
-def calculate_level(xp: int) -> int:
-    """Calculates user level based on total XP."""
-    if xp < 0:
-        return 1
-    return math.floor((xp / 100) ** 0.5) + 1
+# Configure CORS middleware
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+    # Frontend production URL to be added here after deployment
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# # Utility functions
+# def calculate_level(xp: int) -> int:
+#     """Calculates user level based on total XP."""
+#     if xp < 0:
+#         return 1
+#     return math.floor((xp / 100) ** 0.5) + 1
+# We use calculated fields instead!
 
 # --- ENDPOINT DEPENDENCIES ---
 
@@ -158,7 +173,7 @@ def health_check():
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc),
         "service": "Game of Becoming API",
-        "version": "1.0.0"
+        "version": "2.0.0"
     }
 
 @app.post("/login", response_model=schemas.TokenResponse)
@@ -257,42 +272,123 @@ def update_user_me(user_data: schemas.UserUpdate, current_user: Annotated[models
 
 @app.get("/users/me/stats", response_model=schemas.CharacterStatsResponse)
 def get_my_character_stats(
-    current_user: Annotated[models.User, Depends(security.get_current_user)]
+    stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)]
     ):
     """Get the character stats for the currently authenticated user."""
-    # Access the stats directly through the relationship
-    stats = current_user.character_stats
+    # The response model now uses computed_field, so we can return the stats object directly!
+    return stats
 
-    # The user should always have stats, but it's good practice to check
-    if not stats:
-        raise HTTPException(status_code=404, detail="Character stats not found for your account.")
+@app.get("/api/users/me/game-state", response_model=schemas.GameStateResponse)
+async def get_game_state(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+):
+    """
+    The primary endpoint for the frontend to get all necessary data
+    to render the user's current game state upon loading the app.
+    """
+    stats = crud.get_or_create_user_stats(db, current_user.id)
+    todays_intention = crud.get_today_intention(db, current_user.id)
+    unresolved_intention = crud.get_yesterday_incomplete_intention(db, current_user.id)
 
-    # Because 'level' is a calculated value and doesn't exist on the 'stats' object,
-    # we must manually construct the response to include it. This is the correct pattern.
-    return schemas.CharacterStatsResponse(
-        user_id=stats.user_id,
-        level=calculate_level(stats.xp),  # Use the calculated level value
-        xp=stats.xp,
-        resilience=stats.resilience,
-        clarity=stats.clarity,
-        discipline=stats.discipline,
-        commitment=stats.commitment
+    # The "passive failure" path; user did nothing with yesterday's Daily Intention
+    if unresolved_intention and not unresolved_intention.daily_result:
+        unresolved_intention.status = 'failed' # Mark it as failed
+
+        # Call existing service to generate the result and Recovery Quest
+        reflection_data = await services.create_daily_reflection(
+            db=db, user=current_user, daily_intention=unresolved_intention
+        )
+
+        new_result = models.DailyResult(
+            daily_intention_id=unresolved_intention.id,
+            succeeded_failed=False,
+            ai_feedback=reflection_data["ai_feedback"],
+            recovery_quest=reflection_data["recovery_quest"],
+            xp_awarded=0,
+            discipline_stat_gain=0
+        )
+        db.add(new_result)
+        db.commit()
+        db.refresh(unresolved_intention) # Refresh to load the new relationship
+
+    # Pydantic now handles everything automatically thanks to our schema changes using computed_field
+    return schemas.GameStateResponse(
+        user=current_user,
+        stats=stats,
+        todays_intention=todays_intention,
+        unresolved_intention=unresolved_intention
     )
+
+@app.post("/api/onboarding/step", response_model=schemas.OnboardingStepResponse)
+async def handle_onboarding_step(
+    step_data: schemas.OnboardingStepInput,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+):
+    """
+    Handles one step of the AI-driven conversational onboarding flow.
+    """
+    try:
+        response_data = await services.process_onboarding_step(db, current_user, step_data)
+        
+        # If this is the final step, start the user's streak.
+        if response_data.get("next_step") is None:
+            services.update_user_streak(user=current_user)
+            db.commit()
+
+        return response_data
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred during the onboarding process: {str(e)}"
+        )
+
+@app.post("/api/chat", response_model=schemas.ChatMessageResponse)
+async def handle_chat_message(
+    chat_input: schemas.ChatMessageInput,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    db: Session = Depends(database.get_db)
+):
+    """
+    Handles a user's message to the general AI chat and returns a response.
+    """
+    try:
+        # Call our new service function to get the AI's response
+        ai_text = await services.generate_chat_response(
+            db=db, user=current_user, message=chat_input.text
+        )
+        
+        # We could add logic here to log the conversation to the database in the future
+        # For now, we just return the response.
+
+        return schemas.ChatMessageResponse(ai_response=ai_text)
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred with the AI chat."
+        )
 
 
 # --- DAILY INTENTION & EXECUTION LOOP ENDPOINTS ---
 
-# Updated for Smart Detection!
-@app.post("/intentions", response_model=schemas.DailyIntentionCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_daily_intention(
+# Updated for Smart Detection! And now async!
+@app.post("/intentions", response_model=schemas.DailyIntentionCreateResponse, status_code=status.HTTP_200_OK) # No longer 201_CREATED!
+async def create_daily_intention(
     intention_data: schemas.DailyIntentionCreate,
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
 ):
     """
-    Create today's Daily Intention, using the mock service layer.
-    Handles initial submissions and refined submissions after AI feedback.
+    Handles the conversational creation of a Daily Intention.
+    This endpoint is now a passthrough to the conversational service layer.
     """
     # 1. Check if today's Daily Intention for the currently logged in user already exists
     if crud.get_today_intention(db, current_user.id):
@@ -301,93 +397,55 @@ def create_daily_intention(
             detail="Daily Intention already exists for today! Get going making progress on it!"
         )
     
-    # 2. Delegate to the mock service layer (with mock AI prompts and logic for this showcase)
-    process_result = services.create_and_process_intention(db, current_user, intention_data)
+    # 2. NEW: Delegate the entire conversational logic to the service layer.
+    response = await services.create_and_process_intention(db, current_user, intention_data)
 
-    # 3. Handle the result from the mock service
-    if process_result.get("needs_refinement"):
-        # Path 1: The mock service decided refinement is needed. Return the AI feedback
-        # This is a manual construction because the object doesn't exist in the DB.
-        return schemas.DailyIntentionRefinementResponse(ai_feedback=process_result["ai_feedback"])
-    else:
-        # Path 2: The mock service approved the intention. Save it to the database
+    # 3. NEW: If the conversation is complete, we now need to save the new intention. The needs_refinement flag is a thing of the past!
+    if response.next_step == schemas.CreationStep.COMPLETE and response.intention_payload:
         try:
+            # We can use the data from the final payload to create the DB object
+            payload = response.intention_payload
             db_intention = models.DailyIntention(
                 user_id=current_user.id,
-                daily_intention_text=intention_data.daily_intention_text.strip(),
-                target_quantity=intention_data.target_quantity,
-                focus_block_count=intention_data.focus_block_count,
-                ai_feedback=process_result.get("ai_feedback"),
+                daily_intention_text=payload.daily_intention_text,
+                target_quantity=payload.target_quantity,
+                focus_block_count=payload.focus_block_count,
             )
             db.add(db_intention)
-
-            # Update Clarity stat using our dependency
-            clarity_gain = process_result.get("clarity_stat_gain", 0)
-            if clarity_gain > 0:
-                stats.clarity += clarity_gain
-
+            stats.clarity += 1 # Award clarity for setting a good intention
             db.commit()
             db.refresh(db_intention)
-            if clarity_gain > 0:
-                db.refresh(stats)
+            # We need to replace the placeholder ID in the payload with the real one
+            response.intention_payload.id = db_intention.id
 
-            completion_percentage = (
-                (db_intention.completed_quantity / db_intention.target_quantity) * 100
-                if db_intention.target_quantity > 0 else 0.0
-            )
-
-            # Manually constructed return statement with the calculated value
-            return schemas.DailyIntentionResponse(
-                id=db_intention.id,
-                user_id=db_intention.user_id,
-                daily_intention_text=db_intention.daily_intention_text,
-                target_quantity=db_intention.target_quantity,
-                completed_quantity=db_intention.completed_quantity,
-                focus_block_count=db_intention.focus_block_count,
-                completion_percentage=completion_percentage, # Use the calculated value
-                status=db_intention.status,
-                created_at=db_intention.created_at,
-                ai_feedback=db_intention.ai_feedback,
-                focus_blocks=[], # Return empty list for a new intention
-                daily_result=None
-            )
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to create Daily Intention: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save final intention: {e}")
+            
+    return response
             
 
-@app.get("/intentions/today/me", response_model=schemas.DailyIntentionResponse)
+@app.get("/api/intentions/today/me", response_model=schemas.DailyIntentionResponse)
 def get_my_daily_intention(
-    intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)]
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)]
     ):
     """
     Get today's Daily Intention for the currently logged in user.
     The core of the Daily Commitment Screen!
+    UPDATE: Now includes all associated Focus Blocks
+    UPDATE: Now also potentially includes a Daily Result
     """
-    # 1. Calculate the value that doesn't exist in the database model.
-    completion_percentage = (
-        (intention.completed_quantity / intention.target_quantity) * 100
-        if intention.target_quantity > 0 else 0.0
-    )
 
-    # 2. Because we have a calculated value, we must manually construct the Pydantic response model. 
-    return schemas.DailyIntentionResponse(
-        id=intention.id,
-        user_id=intention.user_id,
-        daily_intention_text=intention.daily_intention_text,
-        target_quantity=intention.target_quantity,
-        completed_quantity=intention.completed_quantity,
-        focus_block_count=intention.focus_block_count,
-        completion_percentage=completion_percentage, # Use the calculated value
-        status=intention.status,
-        created_at=intention.created_at,
-        ai_feedback=intention.ai_feedback
-    )
+    # Now includes focus_blocks list. The 'intention.focus_blocks' attribute is already populated thanks
+    # to our eager loading in crud.py. No extra database query is needed here
+    # completion_percentage added automatically now thanks to our schema changes using computed_field
+    # All we do is to simply return the Daily Intention from the dependency
+    return daily_intention
 
-@app.patch("/intentions/today/progress", response_model=schemas.DailyIntentionResponse)
+@app.patch("/api/intentions/today/progress", response_model=schemas.DailyIntentionResponse)
 def update_daily_intention_progress(
     progress_data: schemas.DailyIntentionUpdate,
-    intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
+    daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     db: Session = Depends(database.get_db),
 ):
     """
@@ -397,7 +455,7 @@ def update_daily_intention_progress(
     - Determines if intention is completed, in progress or failed
     """
     # Strict Forward Progress: Users should not be able to report less progress than already recorded
-    if progress_data.completed_quantity < intention.completed_quantity:
+    if progress_data.completed_quantity < daily_intention.completed_quantity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot report less progress than you have already recorded."
@@ -405,34 +463,19 @@ def update_daily_intention_progress(
 
     try:
         # Update progress: absolute, not incremental! Simpler mental model - "Where am I vs my goal?"
-        intention.completed_quantity = min(progress_data.completed_quantity, intention.target_quantity)
-        if intention.completed_quantity >= intention.target_quantity:
-            intention.status = 'completed'
-        elif intention.completed_quantity > 0:
-            intention.status = 'in_progress'
+        daily_intention.completed_quantity = min(progress_data.completed_quantity, daily_intention.target_quantity)
+        if daily_intention.completed_quantity >= daily_intention.target_quantity:
+            daily_intention.status = 'completed'
+        elif daily_intention.completed_quantity > 0:
+            daily_intention.status = 'in_progress'
         else:
-            intention.status = 'pending'
+            daily_intention.status = 'pending'
 
         db.commit()
-        db.refresh(intention)
+        db.refresh(daily_intention)
 
-        # Calculate completion percentage
-        completion_percentage = (
-            (intention.completed_quantity / intention.target_quantity) * 100
-            if intention.target_quantity > 0 else 0.0
-        )
-
-        return schemas.DailyIntentionResponse(
-            id=intention.id,
-            user_id=intention.user_id,
-            daily_intention_text=intention.daily_intention_text,
-            target_quantity=intention.target_quantity,
-            completed_quantity=intention.completed_quantity,
-            focus_block_count=intention.focus_block_count,
-            completion_percentage=completion_percentage, # Use the calculated value
-            status=intention.status,
-            created_at=intention.created_at
-        )
+        # completion_percentage added automatically now thanks to our schema changes using computed_field
+        return daily_intention
     
     except Exception as e:
         print(f"Database error: {e}") 
@@ -442,9 +485,10 @@ def update_daily_intention_progress(
             detail=f"Failed to update Daily Intention progress: {str(e)}"
         )
     
+    
 # --- ATOMIC END-OF-DAY ENDPOINTS ---
-@app.post("/intentions/today/complete", response_model=schemas.DailyResultCompletionResponse)
-def complete_daily_intention(
+@app.post("/api/intentions/today/complete", response_model=schemas.DailyResultCompletionResponse)
+async def complete_daily_intention(
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
@@ -476,10 +520,9 @@ def complete_daily_intention(
     try:
         # Mark as completed
         daily_intention.status = 'completed'
-        daily_intention.completed_quantity = daily_intention.target_quantity  # Ensure full completion
 
         # Call the service to get the reflection logic, Discipline stat gain and XP gain
-        reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
+        reflection_data = await services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
         discipline_gain = reflection_data.get("discipline_stat_gain", 0)
         xp_gain = reflection_data.get("xp_awarded", 0)
 
@@ -511,19 +554,13 @@ def complete_daily_intention(
         db.refresh(db_result)
         db.refresh(stats)
 
-        # Manually construct the final, rich response object
-        return schemas.DailyResultCompletionResponse(
-            id=db_result.id,
-            daily_intention_id=db_result.daily_intention_id,
-            succeeded_failed=db_result.succeeded_failed,
-            ai_feedback=db_result.ai_feedback,
-            recovery_quest=db_result.recovery_quest,
-            recovery_quest_response=db_result.recovery_quest_response,
-            user_confirmation_correction=db_result.user_confirmation_correction,
-            created_at=db_result.created_at,
-            discipline_stat_gain=discipline_gain, # Use the calculated value
-            xp_awarded=xp_gain # Use the calculated value
-        )
+        # We can't use schemas computed fields here since we've called the service layer
+        # We manually construct the response with the calculated field using __dict__ and model_validate 
+        response_data = db_result.__dict__
+        response_data["xp_awarded"] = xp_gain
+        response_data["discipline_stat_gain"] = discipline_gain
+
+        return schemas.DailyResultCompletionResponse.model_validate(response_data)
     
     except Exception as e:
         print(f"Database error: {e}") 
@@ -533,8 +570,8 @@ def complete_daily_intention(
             detail=f"Failed to complete Daily Intention: {str(e)}"
         )
     
-@app.post("/intentions/today/fail", response_model=schemas.DailyResultCompletionResponse)
-def fail_daily_intention(
+@app.post("/api/intentions/today/fail", response_model=schemas.DailyResultCompletionResponse)
+async def fail_daily_intention(
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
     db: Session = Depends(database.get_db)
@@ -562,7 +599,7 @@ def fail_daily_intention(
         # --- Start of new, integrated logic ---
 
         # 1. Call the service to get the reflection logic
-        reflection_data = services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
+        reflection_data = await services.create_daily_reflection(db=db, user=stats.user, daily_intention=daily_intention)
         discipline_gain = reflection_data.get("discipline_stat_gain", 0) # Should be 0 for failure
         xp_gain = reflection_data.get("xp_awarded", 0) # Should also be 0 for failure
 
@@ -588,19 +625,13 @@ def fail_daily_intention(
         db.refresh(db_result)
         db.refresh(stats)
 
-        # Manually construct the final, rich response object
-        return schemas.DailyResultCompletionResponse(
-            id=db_result.id,
-            daily_intention_id=db_result.daily_intention_id,
-            succeeded_failed=db_result.succeeded_failed,
-            ai_feedback=db_result.ai_feedback,
-            recovery_quest=db_result.recovery_quest,
-            recovery_quest_response=db_result.recovery_quest_response,
-            user_confirmation_correction=db_result.user_confirmation_correction,
-            created_at=db_result.created_at,
-            discipline_stat_gain=discipline_gain, # Use the calculated value, despite it being 0
-            xp_awarded=0 # Use the calculated value, despite it being 0
-        )
+        # We can't use schemas computed fields here since we've called the service layer
+        # We manually construct the response with the calculated field using __dict__ and model_validate 
+        response_data = db_result.__dict__
+        response_data["xp_awarded"] = xp_gain
+        response_data["discipline_stat_gain"] = discipline_gain
+
+        return schemas.DailyResultCompletionResponse.model_validate(response_data)
     
     except Exception as e:
         print(f"Database error: {e}") 
@@ -610,8 +641,10 @@ def fail_daily_intention(
             detail=f"Failed to mark Daily Intention as failed: {str(e)}"
         )
     
-# --- FOCUS BLOCK & RECOVERY QUEST ENDPOINTS ---
-@app.post("/focus-blocks", response_model=schemas.FocusBlockResponse, status_code=status.HTTP_201_CREATED)
+    
+# --- FOCUS BLOCK ENDPOINTS ---
+
+@app.post("/api/focus-blocks", response_model=schemas.FocusBlockResponse, status_code=status.HTTP_201_CREATED)
 def create_focus_block(
     block_data: schemas.FocusBlockCreate, 
     daily_intention: Annotated[models.DailyIntention, Depends(get_current_user_daily_intention)],
@@ -655,8 +688,8 @@ def create_focus_block(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create Focus Block: {str(e)}"
         )
-    
-@app.patch("/focus-blocks/{block_id}", response_model=schemas.FocusBlockResponse)
+
+@app.patch("/api/focus-blocks/{block_id}", response_model=schemas.FocusBlockCompletionResponse)
 def update_focus_block(
     update_data: schemas.FocusBlockUpdate, 
     block: Annotated[models.FocusBlock, Depends(get_owned_focus_block)],
@@ -704,8 +737,13 @@ def update_focus_block(
         db.refresh(block)
         if xp_awarded > 0:
             db.refresh(stats)
-            
-        return block
+
+        # We can't use schemas computed fields here since we've called the service layer
+        # We manually construct the response with the calculated field using __dict__ and model_validate 
+        response_data = block.__dict__
+        response_data["xp_awarded"] = xp_awarded
+
+        return schemas.FocusBlockCompletionResponse.model_validate(response_data)
 
     except Exception as e:
         db.rollback()
@@ -715,10 +753,11 @@ def update_focus_block(
         )
 
 
+# --- DAILY RESULTS ENDPOINTS ---
 # The old POST Daily Result creation endpoint /daily-results is no longer needed; 
 # it is all taken care of by the /complete and /fail endpoints!
-    
-@app.get("/daily-results/{intention_id}", response_model=schemas.DailyResultResponse)
+
+@app.get("/api/daily-results/{intention_id}", response_model=schemas.DailyResultResponse)
 def get_daily_result(
     # The dependency does all the work: finds the result AND verifies ownership.
     result: Annotated[models.DailyResult, Depends(get_owned_daily_result_by_intention_id)]
@@ -730,8 +769,8 @@ def get_daily_result(
     # The 'result' object is guaranteed to be the correct, owned DailyResult.
     return result
 
-@app.post("/daily-results/{result_id}/recovery-quest", response_model=schemas.RecoveryQuestResponse)
-def respond_to_recovery_quest(
+@app.post("/api/daily-results/{result_id}/recovery-quest", response_model=schemas.RecoveryQuestResponse)
+async def respond_to_recovery_quest(
     quest_response: schemas.RecoveryQuestInput,
     result: Annotated[models.DailyResult, Depends(get_owned_daily_result_by_result_id)],
     stats: Annotated[models.CharacterStats, Depends(get_current_user_stats)],
@@ -756,7 +795,7 @@ def respond_to_recovery_quest(
         
     try:
         # Call the service to get the simulated AI coaching and stat gains
-        coaching_data = services.process_recovery_quest_response(
+        coaching_data = await services.process_recovery_quest_response(
             db=db,
             user=stats.user,
             result=result,
