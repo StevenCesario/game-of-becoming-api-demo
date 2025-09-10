@@ -260,7 +260,7 @@ def get_user(current_user: Annotated[models.User, Depends(security.get_current_u
 def update_user_me(user_data: schemas.UserUpdate, current_user: Annotated[models.User, Depends(security.get_current_user)], db: Session = Depends(database.get_db)):
     """The new onboarding endpoint."""
     try:
-        current_user.hrga = user_data.hrga
+        current_user.hla = user_data.hla
         # This is the "ignition" that starts the streak at 1.
         services.update_user_streak(user=current_user)
         db.commit()

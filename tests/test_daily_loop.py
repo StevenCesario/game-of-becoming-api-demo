@@ -1,18 +1,32 @@
 #Full, self-contained showcase of the daily loop endpoints
 from freezegun import freeze_time
 from datetime import datetime, timezone
-from app import services
+from app import services, schemas
 
 # --- Mocks ---
 # These functions simulate the responses from our service layer. This allows us
 # to test the API endpoints in isolation, without making real (and slow) AI calls.
 async def mock_intention_approved(db, user, intention_data):
     """A mock that simulates the service layer approving an intention."""
-    return {
-        "needs_refinement": False,
-        "ai_feedback": "Mock AI Feedback: Approved!",
-        "clarity_stat_gain": 1
-    }
+    # This now returns an object matching the expected response model
+    return schemas.IntentionCreationResponse(
+        next_step=schemas.CreationStep.COMPLETE,
+        ai_message="Mock AI Feedback: Approved!",
+        intention_payload=schemas.DailyIntentionResponse(
+            id=1, # Mock ID
+            user_id=user.id,
+            daily_intention_text=intention_data.daily_intention_text,
+            target_quantity=intention_data.target_quantity,
+            completed_quantity=0,
+            focus_block_count=intention_data.focus_block_count,
+            status='pending',
+            created_at=datetime.now(timezone.utc),
+            ai_feedback="Mock AI Feedback: Approved!",
+            needs_refinement=False,
+            focus_blocks=[],
+            daily_result=None
+        )
+    )
 
 async def mock_reflection_success(db, user, daily_intention):
     return {"succeeded": True, "ai_feedback": "Mock Success!", "recovery_quest": None, "discipline_stat_gain": 1, "xp_awarded": 20}
