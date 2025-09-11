@@ -320,20 +320,23 @@ async def get_game_state(
         unresolved_intention=unresolved_intention
     )
 
-@app.post("/api/onboarding/step", response_model=schemas.OnboardingStepResponse)
+@app.post("/api/onboarding/step", response_model=schemas.OnboardingV2Response)
 async def handle_onboarding_step(
-    step_data: schemas.OnboardingStepInput,
+    step_data: schemas.OnboardingV2Request, # UPDATED: We now use the new V2 request schema
     current_user: Annotated[models.User, Depends(security.get_current_user)],
     db: Session = Depends(database.get_db)
 ):
     """
-    Handles one step of the AI-driven conversational onboarding flow.
+    Handles one step of the V2 AI-driven conversational onboarding flow.
     """
     try:
         response_data = await services.process_onboarding_step(db, current_user, step_data)
         
-        # If this is the final step, start the user's streak.
-        if response_data.get("next_step") is None:
+        # UPDATED: The logic now checks for the specific 'COMPLETE' step from our Enum
+        if response_data.next_step == schemas.OnboardingStepName.COMPLETE:
+            # When the conversation is over, we save the final HLA from the response
+            # and officially start the user's streak.
+            current_user.hla = response_data.final_hla
             services.update_user_streak(user=current_user)
             db.commit()
 
