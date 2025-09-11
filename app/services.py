@@ -60,6 +60,57 @@ class RecoveryQuestCoachingResponse(BaseModel):
 
 # --- SERVICE FUNCTIONS (BUSINESS LOGIC LAYER) ---
 
+async def process_onboarding_step(db: Session, user: models.User, request_data: schemas.OnboardingV2Request) -> schemas.OnboardingV2Response:
+    """
+    SIMULATES the V2 conversational Onboarding flow.
+
+    In the production app, this function is a powerful state machine that uses
+    a detailed system prompt to guide a real LLM. For this demo, it uses a
+    simple, hardcoded state machine to showcase the conversational API
+    structure without revealing the core AI logic and prompts.
+    """
+    current_step = request_data.current_step
+    user_text = request_data.user_text
+    
+    print(f"--- SIMULATING V2 ONBOARDING STEP: {current_step.value} ---")
+    await asyncio.sleep(1) # Simulate network latency of an AI call
+
+    # --- Mock State Machine Logic ---
+    if current_step == schemas.OnboardingStepName.AWAITING_BUSINESS_STAGE:
+        # In the real app, the AI would save this to the user model.
+        return schemas.OnboardingV2Response(
+            next_step=schemas.OnboardingStepName.AWAITING_STRETCH_GOAL,
+            ai_message=f"Mock: Got it, you're running a '{user_text}'. That's a great space to be in! Now, what's your 6-12 month stretch goal?"
+        )
+    elif current_step == schemas.OnboardingStepName.AWAITING_STRETCH_GOAL:
+        return schemas.OnboardingV2Response(
+            next_step=schemas.OnboardingStepName.AWAITING_CONSTRAINT_CHOICE,
+            ai_message="Mock: An excellent goal. To get there, we must identify the main bottleneck. What's your #1 constraint right now: Traffic, Sales, or Fulfillment?"
+        )
+    elif current_step == schemas.OnboardingStepName.AWAITING_CONSTRAINT_CHOICE:
+         return schemas.OnboardingV2Response(
+            next_step=schemas.OnboardingStepName.AWAITING_OBSTACLE_DEFINITION,
+            ai_message=f"Mock: Acknowledged. Your primary constraint is {user_text}. What is the single biggest obstacle preventing you from solving this?"
+        )
+    elif current_step == schemas.OnboardingStepName.AWAITING_OBSTACLE_DEFINITION:
+         return schemas.OnboardingV2Response(
+            next_step=schemas.OnboardingStepName.AWAITING_HLA_DEFINITION,
+            ai_message="Mock: That's a very clear obstacle. Now for the most important question: What is the single Highest Leverage Action (HLA) you can take daily to overcome it?"
+        )
+    elif current_step == schemas.OnboardingStepName.AWAITING_HLA_DEFINITION:
+         return schemas.OnboardingV2Response(
+            next_step=schemas.OnboardingStepName.COMPLETE,
+            ai_message="Mock: Perfect. That is a powerful HLA. Your onboarding is now complete. Let's forge your first Daily Intention and begin your quest!",
+            final_hla=user_text # Pass the final HLA back to the endpoint
+        )
+    
+    # Fallback for any other state
+    return schemas.OnboardingV2Response(
+        next_step=schemas.OnboardingStepName.COMPLETE,
+        ai_message="Mock: Onboarding complete!",
+        final_hla="Execute daily outreach."
+    )
+
 def update_user_streak(user: models.User):
     """
     The "Streak Guardian." Contains the core logic for updating a user's streak,
