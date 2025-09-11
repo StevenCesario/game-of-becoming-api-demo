@@ -25,16 +25,19 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(100)) # Nullable is False by default
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    hla: Mapped[Optional[str]] = mapped_column(Text) # Highest Leverage Activity. Unlimited text field - let users be as comprehensive as they wish
     default_focus_block_duration: Mapped[int] = mapped_column(default=50) # In minutes
     registered_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
-    # --- NEW: Onboarding fields ---
-    vision: Mapped[Optional[str]] = mapped_column(Text) # The North Star
-    milestone: Mapped[Optional[str]] = mapped_column(Text) # The 90-day milestone
-    constraint: Mapped[Optional[str]] = mapped_column(Text) # The "Boss" obstacle
+    # --- NEW: ONBOARDING V2 FIELDS ---
+    # vision: Mapped[Optional[str]] = mapped_column(Text) # The user's North Star Life Vision (won't be used for now but can be repurposed once we go from MVP to v2)
+    # milestone: Mapped[Optional[str]] = mapped_column(Text) # The 90-day milestone (replaced with Stretch Goal)
+    constraint: Mapped[Optional[str]] = mapped_column(Text) # Will now store the user-defined obstacle related to their primary_constraint
+    hla: Mapped[Optional[str]] = mapped_column(Text) # Highest Leverage Action. Unlimited text field - let users be as comprehensive as they wish
+    business_stage: Mapped[Optional[str]] = mapped_column(String(100)) # e.g., "Pre-Launch", "Scaling"
+    stretch_goal: Mapped[Optional[str]] = mapped_column(Text) # Replaces 'vision'
+    primary_constraint: Mapped[Optional[str]] = mapped_column(String(50)) # "TRAFFIC", "SALES", or "FULFILLMENT"
 
-    # --- Streak-related fields --- 
+    # --- STREAK-RELATED FIELDS --- 
     current_streak: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
     longest_streak: Mapped[int] = mapped_column(default=0, server_default='0', nullable=False)
     last_streak_update: Mapped[Optional[datetime]] = mapped_column()
