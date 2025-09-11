@@ -71,15 +71,19 @@ class UserResponse(BaseModel):
     id: int
     name: str
     email: str
-    hla: Optional[str]
     current_streak: int
     longest_streak: int
     registered_at: datetime
 
-    # New Onboarding fields
-    vision: Optional[str]
-    milestone: Optional[str]
+    # --- Repurposed V1 Fields ---
+    # These are still used in the V2 flow for the obstacle and final action
     constraint: Optional[str]
+    hla: Optional[str]
+
+    # --- NEW V2 Onboarding Fields ---
+    business_stage: Optional[str]
+    stretch_goal: Optional[str]
+    primary_constraint: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -118,18 +122,27 @@ class CharacterStatsResponse(BaseModel):
 
 
 # =============================================================================
-# ONBOARDING SCHEMAS
+# ONBOARDING SCHEMAS (V2 - CONVERSATIONAL)
 # =============================================================================
 
-class OnboardingStepInput(BaseModel):
-    """Input from the user for a given onboarding step."""
-    step: str = Field(..., description="The current step being completed, e.g., 'vision', 'milestone', 'constraint', 'hla'")
-    text: str = Field(..., min_length=5, max_length=2000)
+class OnboardingStepName(str, Enum):
+    """Defines the states for the V2 onboarding state machine."""
+    AWAITING_BUSINESS_STAGE = "AWAITING_BUSINESS_STAGE"
+    AWAITING_STRETCH_GOAL = "AWAITING_STRETCH_GOAL"
+    AWAITING_CONSTRAINT_CHOICE = "AWAITING_CONSTRAINT_CHOICE"
+    AWAITING_OBSTACLE_DEFINITION = "AWAITING_OBSTACLE_DEFINITION"
+    AWAITING_HLA_DEFINITION = "AWAITING_HLA_DEFINITION"
+    COMPLETE = "COMPLETE"
 
-class OnboardingStepResponse(BaseModel):
-    """The AI Coach's response, guiding the user to the next step."""
-    ai_response: str
-    next_step: Optional[str] = Field(None, description="The name of the next step, e.g., 'milestone'. Null if onboarding is complete.")
+class OnboardingV2Request(BaseModel):
+    """The frontend sends this with each message during the V2 onboarding."""
+    user_text: str = Field(..., min_length=1)
+    current_step: OnboardingStepName
+
+class OnboardingV2Response(BaseModel):
+    """The backend's instructional response to guide the V2 onboarding."""
+    next_step: OnboardingStepName
+    ai_message: str
     # This will hold the final, AI-refined HLA at the end of the process
     final_hla: Optional[str] = None
 
