@@ -1,6 +1,6 @@
-# 🎮 Codename: The Game of Becoming
+# 🎮 Codename: xecution.ai
 
-A robust FastAPI backend that transforms personal development and goal achievement into an engaging, stat-based role-playing game.
+A robust FastAPI backend for an AI-powered behavioral transformation platform designed to help entrepreneurs improve execution consistency.
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal)](https://fastapi.tiangolo.com)
@@ -9,18 +9,22 @@ A robust FastAPI backend that transforms personal development and goal achieveme
 
 > ⚠️ **Demonstration Repository:** This repository showcases the architecture, testing, and API design of a larger, proprietary project. The core business logic in the `services` layer has been replaced with simplified, mock implementations for demonstration purposes.
 
-## 🎯 The Problem: The "Self-Development Trap"
+## 🎯 The Problem: Execution Over Motivation
 
-For ambitious entrepreneurs and professionals, the path to growth is often a frustrating cycle. We know *what* to do, but execution blockers, procrastination, and a loss of self-trust create a loop of "self-development hell." Traditional habit trackers and to-do lists fail because they lack engagement and don't address the underlying motivational challenges.
+Ambitious entrepreneurs know what to do but struggle with consistent execution. Traditional productivity tools fail because they don't address the core challenge: maintaining motivation through the inevitable ups and downs of building something meaningful.
 
-This system is designed to break that cycle.
+The gap isn't knowledge—it's the psychological framework needed to turn intentions into consistent action.
 
-## ✨ The Solution: Gamify Your Growth
+## ✨ The Solution: Gamify Your Business Growth
 
-This API provides the backend foundation for an application that reframes personal and business growth as an engaging role-playing game. By applying proven game mechanics, it creates a powerful, intrinsic motivation loop.
+This API powers a system that transforms business growth into an engaging, measurable experience using proven game mechanics and behavioral psychology.
 
-* **Problem:** It's hard to stay consistent when progress feels invisible.
-* **Solution:** Frame daily actions as **Quests**, focused work as **Execution Sprints**, and personal growth as **Leveling Up**. Provide tangible, visible feedback (XP, Character Stats, and a daily **Streak**) for every action taken, turning failure into a learning opportunity and success into a rewarding experience.
+**Core Approach**:
+* **Daily Intentions** replace overwhelming to-do lists with single, focused output.
+* **Execution Sprints** break work into manageable, timed sessions.
+* **Character Progression** provides tangible feedback through XP, stats, and streaks.
+* **"Fail Forward" Mechanics** turn setbacks into learning opportunities with AI-guided reflection.
+**The Result:** A sustainable motivation system that makes consistent execution feel rewarding rather than draining, helping users build momentum through small, daily wins that compound into significant business growth.
 
 ## 🔑 Key Features & Technical Highlights
 
@@ -33,19 +37,19 @@ This API provides the backend foundation for an application that reframes person
 🛡️ **Secure & Scalable Architecture**
 * **Secure User Authentication** with JWT for stateless, secure sessions.
 * **Clean Architecture** with a clear separation of concerns (API endpoints, business logic `services`, data access `crud`, and database `models`).
-* **Atomic Endpoints** for critical state changes (e.g., completing a quest), ensuring data integrity across multiple database tables in a single transaction.
+* **Atomic Endpoints** for critical state changes (e.g., completing a daily intention), ensuring data integrity across multiple database tables in a single transaction.
 * **Dependency Injection** used throughout for maintainable and testable code.
-* **Declarative State Endpoint** (/game-state) providing a single source of truth for the frontend client on load.
-
-🎮 **Engaging Game Mechanics**
-* **The Daily Streak:** A core retention mechanic that rewards daily consistency, with a forgiving "grace day" rule to encourage users after a setback.
-* **Character Progression:** Users earn XP and level up core stats like `Clarity`, `Discipline`, and `Resilience` by completing their goals.
-* **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain `Resilience` and, crucially, preserve the user's streak.
+* **Declarative State Endpoint** (/api/users/me/game-state) providing a single source of truth for the frontend client on load.
 
 🤖 **Conversational AI Core**
-* **Conversational Onboarding Flow** (/onboarding/step) that guides users to define their core vision and goals through a multi-step dialogue with an AI Clarity coach.
+* **Conversational Onboarding Flow** (/api/onboarding/step) that guides users to define their core vision and goals through a multi-step dialogue with an AI Clarity coach.
 * **Stateful Conversational API** for creating Daily Intentions, demonstrating how to manage a multi-step dialogue with a user via a state machine pattern.
 * **Provider Factory** (llm_providers/factory.py) makes the system extensible and pluggable for different AI services, cleanly decoupling the application from a specific vendor.
+
+🎮 **Core Behavioral Mechanics**
+* **The Daily Streak:** A core retention mechanic that rewards daily consistency, with a forgiving "grace day" rule to encourage users after a setback.
+* **Character Progression:** Users earn XP and level up core stats like `Clarity`, `Discipline`, and `Resilience` by completing their execution sprints and daily intentions.
+* **"Fail Forward" System:** A "Recovery Quest" mechanic that reframes failure as an opportunity to gain Resilience and preserve the user's streak.
 
 ✅ **Fully Tested & Automated**
 * Comprehensive integration and unit test suite using **Pytest**.
@@ -146,4 +150,4 @@ pytest -v
 
 Tests are also automatically executed in a clean environment on every `git push` via the GitHub Actions CI pipeline, providing immediate feedback on code changes.
 
-**Built by Steven Lomon Lennartsson** 🌱
+**Built by Steven Cesario** 🌱
