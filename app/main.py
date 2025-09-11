@@ -22,8 +22,8 @@ load_dotenv()
 
 # FastAPI app setup
 app = FastAPI(
-    title="Game of Becoming API (Public Demo)",
-    description="A demonstration of the backend architecture for a gamified productivity application.",
+    title="xecution.ai API (Public Demo)",
+    description="Backend architecture for AI-powered behavioral transformation platform",
     version="2.0.0",
     docs_url="/docs"
 )
