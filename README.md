@@ -5,7 +5,7 @@ A robust FastAPI backend for an AI-powered behavioral transformation platform de
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Latest-teal)](https://fastapi.tiangolo.com)
 [![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-red)](https://www.sqlalchemy.org/)
-[![CI/CD](https://github.com/stevenlomon/game-of-becoming-api-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenlomon/game-of-becoming-api-demo/actions/workflows/ci.yml)
+[![CI/CD](https://github.com/stevencesario/xecution.ai-api-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenlomon/game-of-becoming-api-demo/actions/workflows/ci.yml)
 
 > ⚠️ **Demonstration Repository:** This repository showcases the architecture, testing, and API design of a larger, proprietary project. The core business logic in the `services` layer has been replaced with simplified, mock implementations for demonstration purposes.
 
